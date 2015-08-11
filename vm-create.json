@@ -1,0 +1,60 @@
+{
+  "description": "API Test",
+  "guestCustomizations": [
+    {
+      "key": "x-guestinfo:vzc.hostname",
+      "value": "smoke"
+    },
+    {
+      "key": "x-guestinfo:vzc.adminsshkey",
+      "value": "ssh-dss AAAAB3NzaC1kc3MAAAEBAPA33c53chrDOosfv/uz1WcivcugNTTxccunEChmqJ8fDfoydl85NszwMq1OEJw+CT2kj9eLbZ5AERwvzcwSguxP5FRFgpy1JT/148717NtjwpCwSp+AXNFf/dWJCTPq/HYb/3vE6it07bsg1Tb7WZtXInsT/5LOBhLarireTs54dUagItyYrjpcke0A987JKNDH6ZuCxOs/DC+O98oX3uuS1301w2MoFFQhv+77WShPvKua4a7LJ74NJbYH9sup2faMo3sk1FVqQsHieAIgaWabfFd0BWRbY7aB+f31bkUGqlzvl+kp1iZDnUO33jjB8GFoJ208iw+sPvbiD/dEUuMAAAAVAI5p2AEJ95Y0A9ugkUEAxEgn6oBBAAABAQCeJPPYmltARVgiCE9jjpvRq/cAZzLRL8O6NE5lixACukDSlQ/rG04FGDTiZX7CW/22fXntd9qB1VdRWK/3nLrQBm8NfA6k42quRC431LoUeA1NSd8uF3H6EeavHwXmMjg8+Crx3kgSwUQ6Wgynk0FsXT3DqmRzKnv7k8e7FrkwPOUt9A1amHtU5pkTkN/xyzPky5pcQlK31vNqIpOvOIkT09fP+tXG5yUtLeUrBMIbQ/ITy1vsAsGgmQT2D7UbbidAm6d6DAbzYx32wa2QmsB2suOpYgCpxWrnpPqRFJL1GOKelIbhe5ybnzssrl37W0y9x9ZB2aAtriYk86DIGs9nAAABABZabzcMOHs9yQMvoH2HUoXRcsaIrOHzkXsa71n65Js/Rp/pJdPlkOIfLj1mZOQBbJUeEYppZouClibfLZqj4r3FdPja6cG55/s3AG3mHuYmEJp9Zp30nSsf1HTcVwdKecRKT/BXNkarUSRO8aCTmarjMcK/kHW1YEbVOGgD+DoMmJ9zLMQbkAHMl9Fu0044wpcrR4KPObHSiL019pEMaU8g5pJAN9FvZtV48DNzk95l3qAQOzJX9+PMGgylM3q9SdJVB/1cu8m7HgXXI66fIUHoHxkrSNGWX752JBujr6KOChnVCQmbvdnqalnAWuifwXOeJBvhwePvdJ2+0v4FMTc= slava@x0r"
+    }
+  ],
+  "memory": 512,
+  "name": "DELME",
+  "processorCores": 1,
+  "processorSpeed": 500,
+  "tags": [
+    "api",
+    "test"
+  ],
+  "type": "application/vnd.terremark.ecloud.vm.v1+json",
+  "vdiskMounts": {
+    "items": [
+      {
+        "diskOps": 1000,
+        "index": 0,
+        "type": "application/vnd.terremark.ecloud.vdisk-mount.v1+json",
+        "vdisk": {
+          "fromVdiskTemplate": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vdisk-template/f3f42a22-2abb-492a-9c0a-268df2c287a9",
+            "type": "application/vnd.terremark.ecloud.vdisk-template.v1+json"
+          },
+          "type": "application/vnd.terremark.ecloud.vdisk.v1+json"
+        }
+      },
+      {
+        "diskOps": 1000,
+        "index": 1,
+        "type": "application/vnd.terremark.ecloud.vdisk-mount.v1+json",
+        "vdisk": {
+          "href": "https://amsa1.cloud.verizon.com/api/compute/vdisk/131abfe3-c626-44ff-a320-fad617b0a001",
+          "type": "application/vnd.terremark.ecloud.vdisk.v1+json"
+        }
+      }
+    ]
+  },
+  "vnics": {
+    "items": [
+      {
+        "bandwidth": 100,
+        "number": 0,
+        "type": "application/vnd.terremark.ecloud.vnic.v1+json",
+        "vnet": {
+          "href": "https://amsa1.cloud.verizon.com/api/compute/vnet/fc4b8626-44a1-41d6-b15e-0df92aee225f",
+          "type": "application/vnd.terremark.ecloud.vnet.v1+json"
+        }
+      }
+    ]
+  }
+}

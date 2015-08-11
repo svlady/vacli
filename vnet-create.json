@@ -1,0 +1,13 @@
+{
+  "description": "Test subnet description",
+  "name": "Test_Subnet",
+  "subnet": {
+    "ipv4cidr": "10.1.1.0/24",
+    "type": "application/vnd.terremark.ecloud.subnet.v1+json"
+  },
+  "tags": [
+    "api",
+    "test"
+  ],
+  "type": "application/vnd.terremark.ecloud.vnet.v1+json"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Test_IP",
+  "tags": [
+    "api",
+    "test"
+  ],
+  "type": "application/vnd.terremark.ecloud.ip-address.v1+json",
+  "v": "V4"
+}

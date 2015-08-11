@@ -1,0 +1,1249 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+-------------------------------------------------------------------------------
+
+PROPRIETARY/CONFIDENTIAL
+Copyright (c) 2015 Verizon, All Rights Reserved.
+Not for disclosure without written permission.
+
+Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@intl.verizon.com)
+Project: Verizon Cloud Automation
+
+Verizon Cloud CLI utility
+
+-------------------------------------------------------------------------------
+"""
+from RestClient import *
+import argparse
+import logging as log
+import sys
+import os
+
+__author__ = 'Slava Vladyshevsky <vyacheslav.vladyshevsky@intl.verizon.com'
+__version__ = '0.1.1'
+
+# supported LOG levels mapped to logging module constants
+LOG_LEVELS = {'critical': log.CRITICAL,
+              'error': log.ERROR,
+              'warning': log.WARNING,
+              'info': log.INFO,
+              'debug': log.DEBUG}
+
+# configuration file name
+CONFIG_FILE = '.vacli'
+DEFAULT_ENDPOINT = 'https://api.cloud.verizon.com'
+
+
+class Command(object):
+    """Base class for all CLI commands.
+
+    All sub-classes are automatically initialized and hooked up by the framework
+    """
+    # must be defined in a sub-class providing the name for an action implemented by that sub-class
+    action = None
+    # reference to a parser class holding command line options for corresponding command
+    args = None
+    # collection, providing a mapping between command names and their implementation classes
+    commands = {}
+    # set of keys common to all resources, that will be printed in resulting table
+    # sub-classes may override this list for custom table columns
+    cols = ['id', 'name', 'description']
+
+    def __init__(self):
+        if self.action:
+            Command.commands[self.action] = self
+            self.args = Command.args.add_parser(self.action, help=self.__doc__)
+            self.args.set_defaults(func=self.run)
+
+    def add_options(self):
+        """Allows to add command line options and arguments for the action implemented by a sub-class."""
+        pass
+
+    def run(self, api, args):
+        """Executing an action implemented by a sub-class."""
+        pass
+
+    @staticmethod
+    def _subclasses(cls, _seen=None):
+        """Generator over all subclasses of a given class, in depth first order."""
+        if _seen is None:
+            _seen = set()
+        for sub in cls.__subclasses__():
+            if sub not in _seen:
+                _seen.add(sub)
+                yield sub
+                for sub in Command._subclasses(sub, _seen):
+                    yield sub
+
+    @classmethod
+    def init(cls, parser):
+        """Constructor method: finds, initializes and collects arguments and options from sub-classes (commands)."""
+        cls.args = parser
+        for c in Command._subclasses(Command):
+            if c.action:
+                c().add_options()
+
+    @classmethod
+    def counter(cls, i=0):
+        """Creates an iterator for auto-increment resource counters and indices."""
+        while 1:
+            yield i
+            i += 1
+
+    @staticmethod
+    def copy_args(src, dst, keys):
+        """Copy non-empty values from `src' to `dst' dictionary for the given keys."""
+        for k in keys:
+            val = src.get(k)
+            if val:
+                dst[k] = val
+
+    @staticmethod
+    def wait(api, job_href, delay):
+        """Wait given time until job executed and return job descriptor.
+
+        Wait times longer than 1hr and shorter than 5 sec are reset to default 60 sec.
+        """
+        if delay < 5 or delay > 3600:   # cutting off extremes
+            delay = 60
+
+        result = api.poll_jobs(job_href, timeout=delay)
+        return result[job_href]
+
+
+class HTTPCommand(Command):
+    """Generic implementation for HTTP verb-related commands used to query resources."""
+    def add_options(self):
+        self.args.add_argument('--href', nargs='*', metavar='href', required=True,
+                               help='space separated list of resource HREFs')
+        self.args.add_argument('--headers', metavar='key:val', nargs='*',
+                               help='(optional) list of key:val pairs added to the request headers')
+
+    def run(self, api, args):
+        headers = {k: v for k, v in (kv.split(':', 1) for kv in args.headers if ':' in kv)} if args.headers else None
+        return [getattr(api, self.action)(href, headers) for href in args.href]
+
+
+class Get(HTTPCommand):
+    """Retrieves a collection of resources specified by their HREFs."""
+    action = 'get'
+
+
+class Delete(HTTPCommand):
+    """Delete a collection of resources specified by their HREFs. Returns a list of jobs."""
+    action = 'delete'
+
+
+class Options(HTTPCommand):
+    """Retrieve a list of HTTP methods and meta-data available for the resources specified by their HREFs."""
+    action = 'options'
+
+
+class UpdateCommand(Command):
+    """Generic implementation for HTTP verb-related commands adding ot updating resources."""
+    def add_options(self):
+        self.args.add_argument('--href', required=True, help='resource collection HREF')
+        self.args.add_argument('--headers', metavar='key:val', nargs='*',
+                               help='(optional) list of key:val pairs added to the request headers')
+        self.args.add_argument('--json-file', metavar='file.json', type=argparse.FileType('r'),
+                               help='file with a valid JSON definition for the resource.')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        try:
+            json_data = json.load(args.json_file)
+        except Exception, ex:
+            raise APIException('JSON parser error. %s' % ex)
+
+        if args.dry_run:
+            return json_data
+
+        headers = {k: v for k, v in (kv.split(':', 1) for kv in args.headers if ':' in kv)} if args.headers else None
+        return getattr(api, self.action)(args.href, data=json_data, headers=headers)
+
+
+class Patch(UpdateCommand):
+    """Update existing resource specified by its HREF."""
+    action = 'patch'
+
+
+class Post(UpdateCommand):
+    """Deploy a new resource (defined in JSON format) in the resource collection specified by its HREF."""
+    action = 'post'
+
+
+class Put(UpdateCommand):
+    """Add a new resource (defined in JSON format) in the resource collection specified by its HREF."""
+    action = 'put'
+
+
+class GetRoot(Command):
+    """Root is the main entry point for the API and represents the subscriber's cloud resources."""
+    action = 'get-root'
+
+    def run(self, api, args):
+        return api.get_root()
+
+
+class GetAdminRoot(Command):
+    """Admin root is the main entry point for the administration API."""
+    action = 'get-admin-root'
+
+    def run(self, api, args):
+        return api.get_root_master()['adminRoot']
+
+
+class GetResourceGroups(Command):
+    """Returns links to the available resource groups in corresponding DCs."""
+    action = 'get-resource-groups'
+    cols = ['name', 'href']
+
+    def add_options(self):
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        return api.get_root_master()['resourceGroups']['items']
+
+
+class JobCommand(Command):
+    """Provides common helper methods for job-related commands."""
+    @staticmethod
+    def strtime(timestamp, fmt='%D %H:%M'):
+        """format unix timestamps as human readable date-time strings"""
+        return time.strftime(fmt, time.localtime(int(timestamp) / 1000))
+
+    @staticmethod
+    def format_time(job):
+        """format job time fields and calculate job duration"""
+        if 'startTime' in job:
+            if 'endTime' in job:
+                job['runTime'] = (int(job['endTime']) - int(job['startTime'])) / 1000
+                job['endTime'] = JobCommand.strtime(job['endTime'])
+
+            job['startTime'] = JobCommand.strtime(job['startTime'])
+
+        return job
+
+
+class JobList(JobCommand):
+    """Get a list of the last N jobs."""
+    action = 'job-list'
+    cols = ['id', 'operation', 'startTime', 'endTime', 'runTime', 'progress', 'status']
+
+    def add_options(self):
+        self.args.add_argument('--last', type=int, metavar='N', nargs='?', const=10, default=10,
+                               help='show last N jobs, default: 10')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        href = api.get_href(group='jobHistory')
+        limit = args.last
+        href = '%s?limit=%d' % (href, limit)
+        jobs = api.get(href)
+        offset = int(jobs['total']) - limit
+        if offset > 0:
+            jobs = api.get('%s&offset=%d' % (href, offset))
+
+        return map(self.format_time, jobs['items'])
+
+
+class JobPoll(JobCommand):
+    """Poll a list of jobs specified by their UIDs or HREFs with given frequency (default: 5 sec) until they completed
+    or given time-out (default: 60 sec) is expired. Returns a JSON list of jobs."""
+    action = 'job-poll'
+    cols = ['id', 'operation', 'startTime', 'endTime', 'runTime', 'progress', 'status']
+
+    def add_options(self):
+        self.args.add_argument('--job', nargs='*', metavar='uid', required=True,
+                               help='space separated list of job UIDs or HREFs')
+        self.args.add_argument('--timeout', type=int, metavar='sec', default=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--poll-interval', type=int, metavar='sec', default=5,
+                               help='(optional) how often to poll (in seconds) for a job status, default: 5')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        jobs = [api.get_href(group='jobHistory', ref=job) for job in args.job]
+        result = api.poll_jobs(jobs, args.poll_interval, args.timeout)
+        return map(self.format_time, result.values())
+
+
+class AclCommand(Command):
+    """The base class for all ACL related commands. Provides helper methods to query and persist ACLs."""
+    @staticmethod
+    def get_acls(api, ip_href):
+        ip = api.get(ip_href)
+        interface_href = api.get_array(ip['networkBoundaryInterfaces']['href'])[0]['href']
+        boundary_href = api.get(interface_href)['networkBoundary']['href']
+        firewall_href = api.get(boundary_href)['firewallRules']['href']
+        return api.get(firewall_href)
+
+    @staticmethod
+    def set_acls(api, acls):
+        href = acls.pop('href')
+        return api.put(href, acls)
+
+
+class ListFirewallRules(AclCommand):
+    """Get a list of firewall rules enforced at a network boundary specified by its IP resource HREF."""
+    action = 'fw-acl-list'
+    cols = ['idx', 'action', 'protocol', 'sourceIpv4Cidr', 'sourcePorts', 'destinationIpv4Cidr', 'destinationPorts']
+
+    def add_options(self):
+        self.args.add_argument('--ip', metavar='xx.xx.xx.xx',
+                               help='IP address')
+        self.args.add_argument('--ip-ref', metavar='uid',
+                               help='IP resource reference, specified by its UID or HREF')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        if args.ip:
+            ref = api.get_href(group='ipAddresses')
+            ip_list = [ip for ip in api.get_array(ref) if ip['address'] == args.ip]
+            if len(ip_list):
+                ip_href = ip_list[0]['href']
+            else:
+                raise ArgumentException('Unknown IP address: %s' % args.ip)
+        elif args.ip_ref:
+            ip_href = api.get_href(group='ipAddresses', ref=args.ip_ref)
+        else:
+            raise ArgumentException('You must specify either ip or ip-ref option.')
+
+        rules = self.get_acls(api, ip_href)['ruleList']
+        idx = self.counter()
+        for acl in rules:
+            acl['idx'] = idx.next()
+        return rules
+
+
+class AddFirewallRule(AclCommand):
+    """Add a firewall rules enforced at a network boundary specified by its IP resource HREF."""
+    action = 'fw-acl-add'
+
+    def add_options(self):
+        self.args.add_argument('--ip', metavar='xx.xx.xx.xx',
+                               help='IP address')
+        self.args.add_argument('--ip-ref', metavar='uid',
+                               help='IP resource reference, specified by its UID or HREF')
+        self.args.add_argument('--idx', metavar='N', type=int, nargs='?', default=0, const=0,
+                               help='index to insert new rule at')
+        self.args.add_argument('--proto', choices=['TCP', 'UDP', 'ICMP', 'ESP', 'ALL'], required=True, dest='protocol',
+                               help='IP protocol to apply ACL to')
+        self.args.add_argument('--action', choices=['DISCARD', 'REJECT', 'ACCEPT'], required=True,
+                               help='matching IP packet action')
+        self.args.add_argument('--src-cidr', metavar='CIDR', dest='sourceIpv4Cidr',
+                               help='Source IP range, default: 0.0.0.0/0 (or any)')
+        self.args.add_argument('--src-port', metavar='PORT', dest='sourcePorts',
+                               help='Source IP range, default: 0 (or any)')
+        self.args.add_argument('--dst-cidr', metavar='CIDR', dest='destinationIpv4Cidr',
+                               help='Destination IP range, default: just the public IP itself')
+        self.args.add_argument('--dst-port', metavar='PORT', dest='destinationPorts', required=True,
+                               help='Destination port range')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        acl = {
+            'sourcePorts': '0',
+            'sourceIpv4Cidr': '0.0.0.0/0'
+        }
+
+        self.copy_args(vars(args), acl, ['action', 'protocol',
+                                         'sourceIpv4Cidr', 'sourcePorts',
+                                         'destinationIpv4Cidr', 'destinationPorts'])
+        if args.ip:
+            ref = api.get_href(group='ipAddresses')
+            ip_list = [ip for ip in api.get_array(ref) if ip['address'] == args.ip]
+            if len(ip_list):
+                ip_href = ip_list[0]['href']
+                ip_addr = ip_list[0]['address']
+            else:
+                raise ArgumentException('Unknown IP address: %s' % args.ip)
+        elif args.ip_ref:
+            ip_href = api.get_href(group='ipAddresses', ref=args.ip_ref)
+            ip_addr = api.get(ip_href)['address']
+        else:
+            raise ArgumentException('You must specify either ip or ip-ref option.')
+
+        acl['destinationIpv4Cidr'] = '%s/32' % ip_addr
+        rules = self.get_acls(api, ip_href)
+        if 'ruleList' not in rules:
+            rules['ruleList'] = []
+        rules['ruleList'].insert(args.idx, acl)
+        if args.dry_run:
+            return rules
+        return self.set_acls(api, rules)
+
+
+class DeleteFirewallRule(AclCommand):
+    """Remove a firewall rules enforced at a network boundary specified by its IP resource HREF."""
+    action = 'fw-acl-del'
+
+    def add_options(self):
+        self.args.add_argument('--ip', metavar='xx.xx.xx.xx',
+                               help='IP address')
+        self.args.add_argument('--ip-ref', metavar='uid',
+                               help='IP resource reference, specified by its UID or HREF')
+        self.args.add_argument('--idx', metavar='N', type=int, nargs='?', default=0, const=0,
+                               help='(optional) index to delete the rule at, default is 0 or the first rule. '
+                                    'Note, the negative index is counted from the bottom of the list, thus -1 '
+                                    'is referring to the last ACL rule.')
+        self.args.add_argument('--all', action='store_true', dest='delete_all',
+                               help='(optional) remove ALL acl rules')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        if args.ip:
+            ref = api.get_href(group='ipAddresses')
+            ip_list = [ip for ip in api.get_array(ref) if ip['address'] == args.ip]
+            if len(ip_list):
+                ip_href = ip_list[0]['href']
+            else:
+                raise ArgumentException('Unknown IP address: %s' % args.ip)
+        elif args.ip_ref:
+            ip_href = api.get_href(group='ipAddresses', ref=args.ip_ref)
+        else:
+            raise ArgumentException('You must specify either ip or ip-ref option.')
+
+        rules = self.get_acls(api, ip_href)
+
+        if args.delete_all:
+            rules['ruleList'] = []
+        else:
+            if args.idx >= len(rules['ruleList']):
+                raise APIException('Invalid ACL rule index %d' % args.idx)
+            rules['ruleList'].pop(args.idx)
+
+        if args.dry_run:
+            return rules
+        return self.set_acls(api, rules)
+
+
+class ListPublicIps(Command):
+    """Get a list of reserved public IP addresses optionally filtered by their tags."""
+    action = 'public-ip-list'
+    cols = ['id', 'address', 'name', 'v', 'vm']
+
+    def add_options(self):
+        self.args.add_argument('--tag', help='(optional) filter IPs by tag')
+        self.args.add_argument('--with-vms', action='store_true',
+                               help='(optional) include linked VMs')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        ref = api.get_href(group='ipAddresses', tag=args.tag)
+        ips = api.get_array(ref)
+        if args.with_vms:
+            for ip in ips:
+                if 'vnic' in ip:
+                    vnic = api.get(ip['vnic']['href'])
+                    ip['vm'] = vnic['vm']['href']
+
+        return ips
+
+
+class AllocatePublicIpCmd(Command):
+    """Allocate and reserve a public IP address from the managed pool."""
+    action = 'public-ip-add'
+
+    def add_options(self):
+        self.args.add_argument('--name', help='(optional) IP resource name')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this IP resource')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+
+    def run(self, api, args):
+        # TODO: handle IPv6
+        info = {
+            'type': 'application/vnd.terremark.ecloud.ip-address.v1+json',
+            'v': 'V4'
+        }
+
+        self.copy_args(vars(args), info, ['name', 'tags'])
+        if args.dry_run:
+            return info
+
+        href = api.get_href(group='ipAddresses')
+        job = api.post(href, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class ReleasePublicIpCmd(Command):
+    """Permanently deallocate the IP address from this user and unbind any associated NICs.."""
+    action = 'public-ip-del'
+
+    def add_options(self):
+        self.args.add_argument('--ip', metavar='xx.xx.xx.xx',
+                               help='IP address')
+        self.args.add_argument('--ip-ref', metavar='uid',
+                               help='IP resource reference, specified by its UID or HREF')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        if args.ip:
+            ref = api.get_href(group='ipAddresses')
+            ip_list = [ip for ip in api.get_array(ref) if ip['address'] == args.ip]
+            if len(ip_list):
+                ip_href = ip_list[0]['href']
+            else:
+                raise ArgumentException('Unknown IP address: %s' % args.ip)
+        elif args.ip_ref:
+            ip_href = api.get_href(group='ipAddresses', ref=args.ip_ref)
+        else:
+            raise ArgumentException('You must specify either ip or ip-ref option.')
+
+        if args.dry_run:
+            return "DELETE %s" % ip_href
+
+        return api.delete(ip_href)
+
+
+class ListVDiskTemplates(Command):
+    """Get a list of vdisk-templates and discover their metadata used to construct a virtual machine resource,
+    including disk size, operating system, etc."""
+    action = 'list-vdisk-templates'
+    cols = ['id', 'templateType', 'name', 'size']
+
+    def add_options(self):
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        ref = api.get_href(group='vdiskTemplates')
+        return api.get_array(ref)
+
+
+class ListVMTemplates(Command):
+    """Get a list of vm-templates and discover their metadata used to construct a virtual machine resource,
+    such as memory, CPU, and reserved performance requirements."""
+    action = 'list-vm-templates'
+    cols = ['id', 'name', 'description']
+
+    def add_options(self):
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        ref = api.get_href(group='vmTemplates')
+        return api.get_array(ref)
+
+
+class ListVDisks(Command):
+    """Get a list of virtual disks (vdisks) optionally filtered by their tags and discover their metadata and status."""
+    action = 'list-vdisks'
+    cols = ['id', 'status', 'name', 'size', 'description', 'faultTolerance']
+
+    def add_options(self):
+        self.args.add_argument('--tag', help='(optional) filter vdisks by tag')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        ref = api.get_href(group='vdisks', tag=args.tag)
+        return api.get_array(ref)
+
+
+class ListVNets(Command):
+    """Get a list of virtual networks optionally filtered by their tags and discover associated sub-nets and vnics."""
+    action = 'list-vnets'
+
+    def add_options(self):
+        self.args.add_argument('--tag', help='(optional) filter vnets by tag')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        href = api.get_href(group='vnets', tag=args.tag)
+        return api.get_array(href)
+
+
+class ListVMs(Command):
+    """Get a list of VMs optionally filtered by their tags and discover their metadata and status."""
+    action = 'list-vms'
+    cols = ['id', 'status', 'os', 'name', 'description']
+
+    def add_options(self):
+        self.args.add_argument('--tag', help='(optional) filter vms by tag')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        href = api.get_href(group='vms', tag=args.tag)
+        return api.get_array(href)
+
+
+class ListVNics(Command):
+    """List virtual network interfaces (vnics) connected to the given virtual network or the given VM."""
+    action = 'list-vnics'
+
+    def add_options(self):
+        self.args.add_argument('--vm', metavar='uid',
+                               help='virtual machine to query')
+        self.args.add_argument('--vnet', metavar='uid',
+                               help='virtual network (vnet) to list attached vms')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        if not (args.vnet or args.vm) or (args.vnet and args.vm):
+            raise ArgumentException('You must specify HREF for either vnet or vm.')
+
+        if args.vm:
+            ref = api.get_href(group='vms', ref=args.vm)
+            Command.cols = ['id', 'number', 'bandwidth', 'ipv4Address', 'mac', 'status']
+
+        if args.vnet:
+            ref = api.get_href(group='vnets', ref=args.vnet)
+            Command.cols = ['id', 'status', 'bandwidth', 'mac', 'vmid']
+
+        vnet = api.get(ref)
+        vnics_href = vnet['vnics']['href']
+        vnics = api.get_array(vnics_href)
+
+        for nic in vnics:
+            href = nic['vm']['href']
+            nic['vm'] = href
+            nic['vmid'] = href.split('/')[-1]
+
+        return vnics
+
+
+class VDiskCreate(Command):
+    """Create a virtual disk (vdisk) resource representing a persistent data storage device."""
+    action = 'vdisk-create'
+
+    def add_options(self):
+        self.args.add_argument('--name', help='(optional) disk name')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this virtual disk')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--size', type=int, metavar='MB',
+                               help='(optional, if template or snapshot specified) virtual disk size in MB')
+        self.args.add_argument('--from-template', metavar='HREF', dest='template',
+                               help='(optional) template HREF to create the disk from')
+        self.args.add_argument('--from-snapshot', metavar='HREF', dest='snapshot',
+                               help='(optional) snapshot HREF to create the disk from')
+        self.args.add_argument('--fault-tolerance', type=int, metavar='N', dest='faultTolerance',
+                               help='(optional) total number of replicas of this disk')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        info = {'type': 'application/vnd.terremark.ecloud.vdisk.v1+json'}
+
+        # we can raise exception here, otherwise REST call will fail with the same error
+        if not (args.template or args.snapshot or args.size) or (args.template and args.snapshot and args.size):
+            raise ArgumentException('You must specify either option: template, snapshot or disk size.')
+
+        if args.template:
+            info['fromVdiskTemplate'] = {
+                'href': args.template,
+                'type': 'application/vnd.terremark.ecloud.vdisk-template.v1+json'
+            }
+
+        if args.snapshot:
+            info['fromSnapshot'] = {
+                'href': args.snapshot,
+                'type': 'application/vnd.terremark.ecloud.snapshot.v1+json'
+            }
+
+        self.copy_args(vars(args), info, ['name', 'tags', 'description', 'size', 'faultTolerance'])
+        if args.dry_run:
+            return info
+
+        href = api.get_href(group='vdisks')
+        job = api.post(href, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class VDiskEdit(Command):
+    """Edit virtual disk (vdisk) resource properties. The fault-tolerance property as well as vdisk size
+    may not be changed using this command"""
+    action = 'vdisk-edit'
+
+    def add_options(self):
+        # NOTE: the faultTolerance setting change is ignored and the size can not be changed via this API call
+        self.args.add_argument('--vdisk', metavar='uid', required=True,
+                               help='virtual disk (vdisk) UID or HREF')
+        self.args.add_argument('--name', help='(optional) disk name')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this resource')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+
+    def run(self, api, args):
+        info = {'type': 'application/vnd.terremark.ecloud.vdisk.v1+json'}
+        self.copy_args(vars(args), info, ['name', 'tags', 'description'])
+        ref = api.get_href(group='vdisks', ref=args.vdisk)
+        return api.patch(ref, info)
+
+
+class VNetCreate(Command):
+    """Create a virtual network (vnet) resource."""
+    action = 'vnet-create'
+
+    # TODO: add more DHCP settings
+    # {
+    # 'name' : 'test-private-net',
+    #     'description' : 'description',
+    #     'tags' : ['api','test'],
+    #     'subnet' : {
+    #         'name' : 'test-private-net-subnet',
+    #         'description' : 'test-private-net-subnet',
+    #         'ipv4cidr' : '10.101.1.0/24',
+    #         'ipv4Gateway' : '10.101.1.1',
+    #         'ipv4Nameservers' : ['10.1.1.1', '10.1.1.2'],
+    #         'ipv4Routes' : [ {'cidr' : '10.1.1.0/24', 'gateway' : '10.101.1.1'} ],
+    #         'ipv4DhcpRange' : '10.101.1.2-10.101.1.100'
+    #     }
+    # }
+
+    def add_options(self):
+        self.args.add_argument('--name', help='(optional) virtual network name')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this resource')
+        self.args.add_argument('--cidr',
+                               help='(optional) additionally create a subnet specified by CIDR')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        info = {'type': 'application/vnd.terremark.ecloud.vnet.v1+json'}
+
+        if args.cidr:
+            info['subnet'] = {
+                'type': 'application/vnd.terremark.ecloud.subnet.v1+json',
+                'ipv4cidr': args.cidr
+            }
+
+        self.copy_args(vars(args), info, ['name', 'tags', 'description'])
+        if args.dry_run:
+            return info
+
+        href = api.get_href(group='vnets')
+        job = api.post(href, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class VNetEdit(Command):
+    """Edit a virtual network (vnet) resource."""
+    action = 'vnet-edit'
+    # TODO: implement vnet-edit command
+
+
+class VMCreate(Command):
+    """Create new virtual machine (VM)."""
+    action = 'vm-create'
+
+    def add_options(self):
+        self.args.add_argument('--name', help='(optional) virtual machine name')
+        self.args.add_argument('--description', metavar='...', help='(optional) virtual machine description')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this resource')
+        self.args.add_argument('--cpus', type=int, metavar='N', default=1, dest='processorCores',
+                               help='(optional) number of CPU cores')
+        self.args.add_argument('--cpu-speed', type=int, metavar='MHz', default=500, dest='processorSpeed',
+                               help='(optional) CPU speed in Mhz, default: 500, max: 2000')
+        self.args.add_argument('--memory', type=int, metavar='MB', default=512,
+                               help='(optional) RAM size in MBs, default: 512')
+        self.args.add_argument('--iops', type=int, metavar='N', default=1000,
+                               help='(optional) IOPs to connect a disk at, default: 1000')
+        self.args.add_argument('--vdisks', metavar='uid', nargs='*',
+                               help='(optional) set of vdisk UIDs or HREFs to attach to the VM. Note, disks will be '
+                                    'attached in the order specified. Disk 0 will always be the boot volume even if '
+                                    'a template vdisk is specified.')
+        self.args.add_argument('--vdisk-template', metavar='uid', dest='template',
+                               help='(optional) template UID or HREF to create disk from')
+        self.args.add_argument('--public-ip', metavar='uid', help='(optional) public IP to attach a vnic to')
+        self.args.add_argument('--vnets', metavar='uid', nargs='*',
+                               help='(optional) set of vnets to attach this VM to')
+        self.args.add_argument('--bandwidth', type=int, default=100, metavar='Mbps',
+                               help='(optional) reserved vnic bandwidth, default 100 Mbps. '
+                                    'The aggregate bandwidth of all VM vnics must not exceed 1000 Mbps.')
+        self.args.add_argument('--guest-options', metavar='key=val', nargs='*',
+                               help='(optional) list of key=val pairs used for guest customization, '
+                                    'for specific options please check template details')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    @staticmethod
+    def attach_vdisk(vm, vdisk, iops, index=Command.counter()):
+        vdisk_mount = {
+            'type': 'application/vnd.terremark.ecloud.vdisk-mount.v1+json',
+            'index': index.next(),
+            'diskOps': iops,
+            'vdisk': {'type': 'application/vnd.terremark.ecloud.vdisk.v1+json'}
+        }
+
+        vdisk_mount['vdisk'].update(vdisk)
+        vm['vdiskMounts']['items'].append(vdisk_mount)
+
+    @staticmethod
+    def attach_vnet(vm, vnet, bandwidth, index=Command.counter()):
+        vnic = {
+            'type': 'application/vnd.terremark.ecloud.vnic.v1+json',
+            'number': index.next(),
+            'bandwidth': bandwidth
+        }
+
+        vnic.update(vnet)
+        vm['vnics']['items'].append(vnic)
+
+    def run(self, api, args):
+        vm_info = {
+            'type': 'application/vnd.terremark.ecloud.vm.v1+json',
+            'vdiskMounts': {'items': []},
+            'vnics': {'items': []}
+        }
+
+        if args.template:
+            disk_template = {
+                'fromVdiskTemplate': {
+                    'type': 'application/vnd.terremark.ecloud.vdisk-template.v1+json',
+                    'href': api.get_href(group='vdiskTemplates', ref=args.template)
+                }
+            }
+            self.attach_vdisk(vm_info, disk_template, args.iops)
+
+        if args.vdisks:
+            for disk in args.vdisks:
+                ref = api.get_href(group='vdisks', ref=disk)
+                self.attach_vdisk(vm_info, {'href': ref}, args.iops)
+
+        if args.vnets:
+            for vnet in args.vnets:
+                vnet_info = {
+                    'vnet': {
+                        'type': 'application/vnd.terremark.ecloud.vnet.v1+json',
+                        'href': api.get_href(group='vnets', ref=vnet)
+                    }
+                }
+                self.attach_vnet(vm_info, vnet_info, args.bandwidth)
+
+        if args.public_ip:
+            ip_info = {
+                'publicIpv4': {
+                    'type': 'application/vnd.terremark.ecloud.ip-address.v1+json',
+                    'href': api.get_href(group='ipAddresses', ref=args.public_ip)
+                }
+            }
+            self.attach_vnet(vm_info, ip_info, args.bandwidth)
+
+        # Example guestCustomization, the guest customization options depending on specific VM template
+        #
+        # guest_info = [
+        # {
+        #         'key': 'x-guestinfo:vzc.adminsshkey',
+        #         'value': 'ssh-dss AAAAB3NzaC1kc3MAAACBAO4ZxP4RKF9AJil8whpWK4pDV2sEorgcWEr/z+...'
+        #     },
+        #     {
+        #         'key': 'x-guestinfo:vzc.hostname',
+        #         'value': 'smoke'
+        #     },
+        #     {
+        #         'key': 'x-guestinfo:vzc.secondaryadminname',
+        #         'value': 'cloud'
+        #     },
+        #     {
+        #         'key': 'x-guestinfo:vzc.primaryadminname',
+        #         'value': 'root'
+        #     }
+        # ]
+        if args.guest_options:
+            vm_info['guestCustomizations'] = [
+                {'key': k, 'value': v} for k, v in (kv.split('=', 1) for kv in args.guest_options if '=' in kv)
+            ]
+
+        self.copy_args(vars(args), vm_info,
+                       ['name', 'tags', 'description', 'processorCores', 'processorSpeed', 'memory'])
+
+        if args.dry_run:
+            return vm_info
+
+        href = api.get_href(group='vms')
+        job = api.post(href, vm_info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class VMEdit(Command):
+    """Edit virtual machine (VM)."""
+    action = 'vm-edit'
+    # TODO: implement vm-edit command
+
+
+class VNicAdd(Command):
+    """Add a virtual network interface card (vnic) that connects VM to the virtual network (vnet)
+    or directly to the public IP address."""
+    action = 'vm-add-vnic'
+
+    def add_options(self):
+        self.args.add_argument('--vm', required=True, metavar='uid',
+                               help='virtual machine to add vnic to')
+        self.args.add_argument('--vnet', metavar='uid',
+                               help='(optional) virtual network (vnet) to attach vnic to')
+        self.args.add_argument('--ipv4', metavar='x.x.x.x', dest='ipv4Address',
+                               help='(optional) private IP to configure vnic with')
+        self.args.add_argument('--public-ip', metavar='uid', help='(optional) public IP to attach vnic to')
+        self.args.add_argument('--bandwidth', type=int, default=100, metavar='Mbps',
+                               help='(optional) reserved vnic bandwidth in Mbps, default: 100.'
+                                    'The aggregate bandwidth of all VM vnics must not exceed 1000 Mbps.')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        info = {'type': 'application/vnd.terremark.ecloud.vnic.v1+json'}
+
+        # we can raise exception here, otherwise REST call will fail with the same error
+        if not (args.vnet or args.public_ip) or (args.vnet and args.public_ip):
+            raise ArgumentException('You must specify either vnet or public IP.')
+
+        if args.vnet:
+            info['vnet'] = {
+                'type': 'application/vnd.terremark.ecloud.vnet.v1+json',
+                'href': api.get_href(group='vnets', ref=args.vnet)
+            }
+
+        if args.public_ip:
+            info['publicIpv4'] = {
+                'type': 'application/vnd.terremark.ecloud.ip-address.v1+json',
+                'href': api.get_href(group='ipAddresses', ref=args.public_ip)
+            }
+
+        self.copy_args(vars(args), info, ['bandwidth', 'description', 'ipv4Address'])
+        ref = api.get_href(group='vms', ref=args.vm)
+        vm = api.get(ref)
+        vnics_href = vm['vnics']['href']
+        highest_idx = max([nic['number'] for nic in api.get_array(vnics_href)])
+        info['number'] = highest_idx + 1
+        if args.dry_run:
+            return info
+
+        job = api.post(vnics_href, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class VDiskAdd(Command):
+    """Add a virtual disk (vdisk) to the VM."""
+    action = 'vm-add-vdisk'
+
+    def add_options(self):
+        self.args.add_argument('--vm', required=True, metavar='uid',
+                               help='virtual machine to add a vdisk to')
+        self.args.add_argument('--vdisk', metavar='uid', required=True,
+                               help='virtual disk (vdisk) UID or HREF to attach to the VM')
+        self.args.add_argument('--iops', type=int, default=1000, dest='diskOps',
+                               help='(optional) reserved vdisk throughput, default 1000 IOPs, maximum 5000 IOPs.')
+        self.args.add_argument('--boot', action='store_true',
+                               help='(optional) indicates whether the disk to be used as a boot disk.')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        info = {
+            'type': 'application/vnd.terremark.ecloud.vdisk-mount.v1+json',
+            'vdisk': {
+                'type': 'application/vnd.terremark.ecloud.vdisk.v1+json',
+                'href': api.get_href(group='vdisks', ref=args.vdisk)
+            }
+        }
+
+        self.copy_args(vars(args), info, ['boot', 'diskOps'])
+        ref = api.get_href(group='vms', ref=args.vm)
+        vm = api.get(ref)
+        mounts_href = vm['vdiskMounts']['href']
+        highest_idx = max([disk['index'] for disk in api.get_array(mounts_href)])
+        info['index'] = highest_idx + 1
+        if args.dry_run:
+            return info
+
+        job = api.post(mounts_href, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+
+class VDiskMounts(Command):
+    """List virtual disk (vdisk) mounts for the given VM."""
+    action = 'vm-list-mounts'
+    cols = ['id', 'index', 'status', 'diskOps', 'boot']
+
+    def add_options(self):
+        self.args.add_argument('--vm', required=True, metavar='uid',
+                               help='virtual machine to query')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        ref = api.get_href(group='vms', ref=args.vm)
+        vm = api.get(ref)
+        mounts_href = vm['vdiskMounts']['href']
+        return api.get(mounts_href)['items']
+
+
+class VNicEdit(Command):
+    """Edit virtual network interface (vnic) for the given VM."""
+    action = 'vnic-edit'
+    # TODO: implement vnic-edit command
+
+
+class UpdateIops(Command):
+    """Update IOPs value set for the given vdisk mount."""
+    action = 'update-iops'
+
+    def add_options(self):
+        self.args.add_argument('--vdisk-mount', required=True, metavar='href',
+                               help='virtual disk mount HREF to update IOPs for')
+        self.args.add_argument('--iops', type=int, default=1000,
+                               help='(optional) reserved vdisk throughput, default 1000 IOPs, maximum 5000 IOPs.')
+
+    def run(self, api, args):
+        info = {
+            'type': 'application/vnd.terremark.ecloud.vdisk-mount.v1+json',
+            'diskOps': args.iops
+        }
+        return api.patch(args.vdisk_mount, info)
+
+
+class VMControl(Command):
+    """Virtual Machine controller. """
+    action = 'vm-ctl'
+
+    def add_options(self):
+        self.args.add_argument('--vm', required=True, metavar='uid',
+                               help='virtual machine to send a command to')
+        self.args.add_argument('--cmd', choices=['power-on', 'power-off', 'reboot', 'reset', 'shutdown'],
+                               help='(optional) VM command. If this option skipped, available VM controllers listed.')
+        self.args.add_argument('--force', action='store_true',
+                               help='(optional) force controller command even if VM does not expose it.')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+
+    def run(self, api, args):
+        ref = api.get_href(group='vms', ref=args.vm)
+        vm = api.get(ref)
+
+        """
+        "controllers": {
+          "powerOn": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vm/<VM UUID>/power-on/",
+            "type": "application/vnd.terremark.ecloud.controller.v1+json"
+          },
+          "powerOff": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vm/<VM UUID>/power-off/",
+            "type": "application/vnd.terremark.ecloud.controller.v1+json"
+          },
+          "reboot": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vm/<VM UUID>/reboot/",
+            "type": "application/vnd.terremark.ecloud.controller.v1+json"
+          },
+          "reset": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vm/<VM UUID>/reset/",
+            "type": "application/vnd.terremark.ecloud.controller.v1+json"
+          },
+          "shutdown": {
+            "href": "https://amsa1.cloud.verizon.com/api/compute/vm/<VM UUID>/shutdown/",
+            "type": "application/vnd.terremark.ecloud.controller.v1+json"
+          }
+        }
+        """
+        # VM command to controller mapping
+        cmd_controller = {
+            "power-on": "powerOn",
+            "power-off": "powerOff",
+            "reboot": "reboot",
+            "reset": "reset",
+            "shutdown": "shutdown"
+        }
+
+        cmd = cmd_controller[args.cmd]
+
+        # if forced, we'll be calling VM controller even if VM is not explicitly exposing it,
+        # this is particularly helpful for VMs stuck between life-cycle states
+        if args.force:
+            href = "%s/%s/" % (ref, args.cmd)
+
+        # normally, we'll be only considering controllers exposed by the VM itself
+        else:
+            if 'controllers' not in vm:
+                raise APIException('VM does not expose any controllers. Try --force option.')
+
+            controllers = vm['controllers']
+            if not args.cmd:
+                return controllers
+
+            if cmd not in controllers:
+                raise APIException('VM %s does not have controller %s' % (args.vm, args.cmd))
+
+            href = controllers[cmd]['href']
+
+        job = api.post(href)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
+
+# TODO: handle controller actions for vDisks (snapshot, revert, ...)
+
+
+class GeorgeCli:
+    """CLI interface implementation for George also known as VectorA and Reserved Performance Cloud
+
+    All Command subclasses implementing corresponding CLI commands being queried for their options and command-line
+    switches, which are used to build an option parser and invoke REST API calls corresponding to the user inputs
+    """
+    __name__ = 'vacli'
+
+    def __init__(self):
+        self.cfg = {
+            'api_user': os.getenv('API_USER'),
+            'api_org': os.getenv('API_ORG'),
+            'api_account': os.getenv('API_ACCOUNT'),
+            'api_cloud_space': os.getenv('API_CLOUD_SPACE'),
+            'api_access_key': os.getenv('API_ACCESS_KEY'),
+            'api_secret_key': os.getenv('API_SECRET_KEY'),
+            'api_endpoint': os.getenv('API_ENDPOINT', DEFAULT_ENDPOINT)
+        }
+
+        self.cli = argparse.ArgumentParser(
+            prog=self.__name__,
+            description='This tool provides a unified command line interface to the Verizon Cloud.',
+            epilog='Use "vacli <command> -h" to get help for command specific options and usage.')
+
+        self.cli.add_argument('--log-level', choices=LOG_LEVELS.keys(), metavar='LOG_LEVEL',
+                              help='Logging level may be: critical, error, warning, info, debug. '
+                                   'By default warning and higher severity messages being logged.')
+        self.cli.add_argument('--log-file', help='Log file name, if not provided, log messages sent to a console.')
+        self.cli.add_argument('--config-file', metavar='config.ext', nargs='?',
+                              help='Configuration file to be used. If non specified the "%s" is used.' % CONFIG_FILE)
+        self.cli.add_argument('--profile', default='default',
+                              help='Configuration profile to be used. If non specified the "default" one is used.')
+        self.cli.add_argument('--api-endpoint', help='The URL specifying a preferred API endpoint.')
+        self.cli.add_argument('--api-account', help='The account the API user is associated with.')
+        self.cli.add_argument('--api-cloud-space', help='The cloud-space UUID, if account has multiple cloud-spaces.')
+        self.cli.add_argument('--api-access-key', help='The access key identifier.')
+        self.cli.add_argument('--api-secret-key', help='The access key secret.')
+
+        Command.init(self.cli.add_subparsers(title='The most commonly used commands', metavar=''))
+
+    def run(self):
+        if len(sys.argv) == 1:
+            self.cli.print_help()
+            return 0
+
+        args = self.cli.parse_args()
+
+        # setting up logging
+        log.basicConfig(
+            level=LOG_LEVELS.get(args.log_level, log.WARNING),
+            filename=args.log_file,
+            format='%(asctime)s %(levelname)s: %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # reading configurations: 1) shell env; 2) config file; 3) cli options
+        config_path = args.config_file if args.config_file else CONFIG_FILE
+        try:
+            with open(config_path) as config_file:
+                settings = json.load(config_file)
+                if args.profile:
+                    self.cfg.update(settings.get(args.profile, {}))
+        except Exception, ex:
+            print 'Error reading config file %s. %s' % (config_path, ex)
+            return 1
+
+        Command.copy_args(
+            vars(args), self.cfg,
+            ['api_endpoint', 'api_account', 'api_cloud_space', 'api_access_key', 'api_secret_key']
+        )
+
+        log.debug('%s.args: %s' % (self.__name__, args))
+        log.debug('%s.config: %s' % (self.__name__, self.cfg))
+
+        if not (self.cfg['api_access_key'] and self.cfg['api_secret_key']):
+            print 'Missing API keys. Check your configuration.'
+            return 2
+
+        try:
+            api = RestClient(
+                self.cfg['api_endpoint'],
+                auth=CloudApiAuth(self.cfg['api_access_key'], self.cfg['api_secret_key']),
+                account=self.cfg['api_account'], cloudspace=self.cfg['api_cloud_space']
+            )
+
+            result = args.func(api, args)
+
+            # args.table is the optional list with the output table columns, if this list is empty,
+            # looking for default list of columns inside the command-object itself
+            cols = args.table if 'table' in args else None
+            if cols == []:
+                cmd = args.func.im_class
+                if hasattr(cmd, 'cols'):
+                    cols = cmd.cols
+
+            if cols:
+                api.print_table(result, cols)
+            elif result:
+                api.print_json(result)
+
+        except (ArgumentException, APIException), ex:
+            print ex
+            log.debug('%s Exception: %s' % (self.__name__, ex))
+            return 3
+        except (KeyboardInterrupt, SystemExit), ex:
+            print 'Execution interrupted!'
+            log.debug('%s Exception: %s' % (self.__name__, ex))
+            return 4
+        except:
+            print 'Runtime error:', sys.exc_info()
+            return 127
+
+        return 0
+
+
+def main():
+    cli = GeorgeCli()
+    return cli.run()
+
+
+if __name__ == '__main__':
+    exit(main())
