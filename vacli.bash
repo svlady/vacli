@@ -6,7 +6,7 @@
 #    Copyright (c) 2015 Verizon, All Rights Reserved.
 #    Not for disclosure without written permission.
 #
-#    Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@intl.verizon.com)
+#    Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@de.verizon.com)
 #    Project: Verizon Cloud Automation
 #
 #    Bash auto-completion for vacli tool
@@ -27,7 +27,7 @@ _vacli()
     #  Global CLI options that we will auto-complete if no command provided
     #
     glob_args="--api-access-key --api-account --api-cloud-space --api-endpoint --api-secret-key \
-        --log-file --log-level --config-file --profile"
+        --log-file --log-level --config-file --profile --http-proxy"
 
     #
     #  Basic CLI commands we'll complete. Note leading and trailing spaces
