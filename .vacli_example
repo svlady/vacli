@@ -1,0 +1,11 @@
+{
+	"default": {
+		"comment": "Test cloud-space access",
+		"http_proxy": "proxy.....com:80",
+		"api_account": "720438c0-...",
+		"api_cloud_space": "60f28e75-...",
+		"api_access_key": "6451af2...",
+		"api_secret_key": "RrIOESzok...",
+		"api_endpoint": "https://amsa1.cloud.verizon.com"
+	}
+}
