@@ -8,7 +8,7 @@ PROPRIETARY/CONFIDENTIAL
 Copyright (c) 2015 Verizon, All Rights Reserved.
 Not for disclosure without written permission.
 
-Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@intl.verizon.com)
+Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@de.verizon.com)
 Project: Verizon Cloud Automation
 
 Verizon Cloud CLI utility
@@ -21,8 +21,8 @@ import logging as log
 import sys
 import os
 
-__author__ = 'Slava Vladyshevsky <vyacheslav.vladyshevsky@intl.verizon.com'
-__version__ = '0.1.1'
+__author__ = 'Slava Vladyshevsky <slava.vladyshevsky@gmail.com'
+__version__ = '0.1.3'
 
 # supported LOG levels mapped to logging module constants
 LOG_LEVELS = {'critical': log.CRITICAL,
@@ -33,7 +33,11 @@ LOG_LEVELS = {'critical': log.CRITICAL,
 
 # configuration file name
 CONFIG_FILE = '.vacli'
+# API endpoint used for discovery
 DEFAULT_ENDPOINT = 'https://api.cloud.verizon.com'
+# page size for fetching resource collections, the default value is 20
+# increasing this number may improve performance for huge collections (VMs and vDisks)
+PAGE_SIZE = 100
 
 
 class Command(object):
@@ -555,8 +559,9 @@ class ListVDisks(Command):
                                help='format output as a human readable table with given keys')
 
     def run(self, api, args):
-        ref = api.get_href(group='vdisks', tag=args.tag)
-        return api.get_array(ref)
+        href = api.get_href(group='vdisks', tag=args.tag)
+        href = '%s?limit=%d' % (href, PAGE_SIZE)
+        return api.get_array(href)
 
 
 class ListVNets(Command):
@@ -585,6 +590,7 @@ class ListVMs(Command):
 
     def run(self, api, args):
         href = api.get_href(group='vms', tag=args.tag)
+        href = '%s?limit=%d' % (href, PAGE_SIZE)
         return api.get_array(href)
 
 
@@ -1141,7 +1147,8 @@ class GeorgeCli:
             'api_cloud_space': os.getenv('API_CLOUD_SPACE'),
             'api_access_key': os.getenv('API_ACCESS_KEY'),
             'api_secret_key': os.getenv('API_SECRET_KEY'),
-            'api_endpoint': os.getenv('API_ENDPOINT', DEFAULT_ENDPOINT)
+            'api_endpoint': os.getenv('API_ENDPOINT', DEFAULT_ENDPOINT),
+            'http_proxy': os.getenv('HTTP_PROXY')
         }
 
         self.cli = argparse.ArgumentParser(
@@ -1157,6 +1164,7 @@ class GeorgeCli:
                               help='Configuration file to be used. If non specified the "%s" is used.' % CONFIG_FILE)
         self.cli.add_argument('--profile', default='default',
                               help='Configuration profile to be used. If non specified the "default" one is used.')
+        self.cli.add_argument('--http-proxy', help='The HOST:PORT specifying a proxy server.')
         self.cli.add_argument('--api-endpoint', help='The URL specifying a preferred API endpoint.')
         self.cli.add_argument('--api-account', help='The account the API user is associated with.')
         self.cli.add_argument('--api-cloud-space', help='The cloud-space UUID, if account has multiple cloud-spaces.')
@@ -1193,7 +1201,7 @@ class GeorgeCli:
 
         Command.copy_args(
             vars(args), self.cfg,
-            ['api_endpoint', 'api_account', 'api_cloud_space', 'api_access_key', 'api_secret_key']
+            ['api_endpoint', 'api_account', 'api_cloud_space', 'api_access_key', 'api_secret_key', 'http_proxy']
         )
 
         log.debug('%s.args: %s' % (self.__name__, args))
@@ -1207,7 +1215,8 @@ class GeorgeCli:
             api = RestClient(
                 self.cfg['api_endpoint'],
                 auth=CloudApiAuth(self.cfg['api_access_key'], self.cfg['api_secret_key']),
-                account=self.cfg['api_account'], cloudspace=self.cfg['api_cloud_space']
+                account=self.cfg['api_account'], cloudspace=self.cfg['api_cloud_space'],
+                proxy=self.cfg['http_proxy']
             )
 
             result = args.func(api, args)
