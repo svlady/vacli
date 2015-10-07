@@ -1,9 +1,63 @@
+SUMMARY
+
+The `vacli' project has been inspired by awscli utility and provides similar
+REST API access functionality for the VCC platform, also historically known
+as project George or Vector A.
+
+Below is the list of the most important features:
+
+    * self-sufficient, no external library or dependencies
+    * highly configurable (config file, env variables, CLI switches)
+    * supports multiple configuration profiles
+    * supports command line auto-completion
+    * advanced logging capabilities
+    * supports primitive HTTP commands
+    * significant REST API coverage
+    * supports both short (UUID) and long (HREF) resource IDs
+    * supports both JSON and tabular output formatting
+    * supports resource tags
+    * supports HTTP/HTTPS proxy
+
+The package includes everything to get you started:
+
+Readme.txt      - the file you're reading
+.vacli_example  - the example configuration file (in JSON format)
+RestClient.py   - the Python module implementing a generic REST API wrapper
+vacli           - the CLI tool providing human interface for the API
+vacli.bash      - the BASH script to be sourced for shell auto-completion
+vacli.env       - the BASH script to be sourced for ENV variables setup
+vacli.tmp       - the API cache file, stores immutable API call results
+
+Make sure to check the FAQ section at the end of the document. Chances are -
+some of your questions are already answered there.
+
+
+SUPPORT
+
+This project provided as example code only, meaning that there is no support
+commitment or obligations. Saying that, the package author and the team of
+maintainers may provide some support on a best-effort basis as time permits.
+
+If you have any questions, suggestions or comments - feel free to contact:
+    Slava Vladyshevsky <slava.vladyshevsky@gmail.com>
+    Andy Stenger <andy.stenger@gmail.com>
+
+
+PREREQUISITES
+
+Due to the syntax and compatibility constraints the tool is supported for
+the Python version 2.7 only. Both Windows, Linux and MacOS versions were
+tested.
+
 
 SETUP
 
 There is no real setup required. The vacli is a python script working with both
-Python 2.x and 3.x versions. It does not depend on any external modules and may
-be used right away as soon as you have got your access keys.
+Python 2.7. Unfortunately, earlier 2.4 and later versions 3.x are not supported
+due to the syntax changes and compatibility constraints.
+
+The tool does not depend on any external modules or libraries and may be used
+right away as soon as you have your credentials and access point details setup.
 
 The configuration options may be specified in several ways:
 
@@ -11,12 +65,14 @@ The configuration options may be specified in several ways:
     into the .vacli configuration file, which is normally placed in the folder,
     where vacli script resides. For example:
 
-    $ cat .vacli
+    $ cat .vacli_example
 
     {
       "default": {
-        "api_user": "vyacheslav.vladyshevsky@intl.verizon.com",
-        "api_org": "f43a0037-...",
+        // optional proxy, can be removed for direct access to API endpoint
+        "http_proxy": "proxy.....com:80",
+
+        // the following are essential parameters defining your credentials
         "api_account": "720438c0-...",
         "api_cloud_space": "60f28e75-...",
         "api_access_key": "6451af2...",
@@ -41,9 +97,9 @@ The configuration options may be specified in several ways:
     API_USER="vyacheslav.vladyshevsky@intl.verizon.com"
     API_ORG="f43a0037-..."
     API_ACCOUNT="720438c0-..."
-    API_CLOUD_SPACE="60f28e75-...",
+    API_CLOUD_SPACE="60f28e75-..."
     API_ACCESS_KEY="6451af2..."
-    API_SECRET_KEY="RrIOESzok...",
+    API_SECRET_KEY="RrIOESzok..."
     API_ENDPOINT="https://amsa1.cloud.verizon.com"
 
     export API_USER API_ORG API_ACCOUNT API_CLOUD_SPACE \
@@ -59,13 +115,112 @@ The configuration options may be specified in several ways:
     the command line options
 
 
+USING PROXY
+
+Sometimes egress HTTP/HTTPS calls are not allowed and the only way to access
+the API endpoint is using HTTP proxy. Like other configuration settings the
+proxy can be specified using either configuration file, environment variable
+or corresponding command-line option, e.g.
+
+    $ HTTP_PROXY=XX.XX.XX.XX:3128 ./vacli --log-level info get-root
+    $ ./vacli --http-proxy XX.XX.XX.XX:3128 --log-level info get-root
+
+    2015-08-25 15:15:36 INFO: RestClient.init(base_url: https://amsa1.cloud.verizon.com)
+    2015-08-25 15:15:36 INFO: RestClient.get_root(tag: None)
+    2015-08-25 15:15:36 INFO: RestClient.request(verb: GET, url: https://amsa1.cloud.verizon.com/api/compute)
+    2015-08-25 15:15:36 INFO: RestClient.request via proxy XX.XX.XX.XX:3128
+    2015-08-25 15:15:39 INFO: RestClient.response: 200 OK
+    {
+      "description": "This is a resource root entry point for the REST API",
+      "href": "https://amsa1.cloud.verizon.com/api/compute",
+      ...
+
+Note: the SOCKS protocol is not supported.
+
+
+API PERFORMANCE AND CACHING
+
+One of the REST API benefits - using HTTP protocol as its transport is at the
+same quickly becoming one of its major shortcomings. Add SSL to the mix and the
+proxy server in between and previously quick and responsive API calls all the
+sudden becoming sluggish and slow. Now, run a loop to process hundreds API
+calls and go get your favorite beverage.
+
+Obviously, besides finding a quick and responsive proxy server not much can be
+done to resolve the aforementioned issue. However, some little improvements
+may be still achieved by caching some API call responses and reducing overall
+chattiness.
+
+1. Caching API calls
+    The caching itself may be good or evil, so special attention must be paid
+    to what is cached exactly and for how long. At the same time, caching
+    fairly immutable API responses must be safe enough and may help improving
+    API performance without sacrificing accuracy or reliability.
+
+    The VACLI does implement this idea and caches mostly immutable data in the
+    local file-system file: vacli.tmp. Normally, you don't need to care much
+    about this cache, clean or flush it, when moving to a different endpoint
+    or environment. It will be flushed or updated automatically.
+
+    $ ./vacli --log-level info list-vms --table
+    2015-10-05 12:13:14 INFO: RestClient.init(base_url: https://amsa1.cloud.verizon.com)
+    2015-10-05 12:13:14 INFO: RestClient.init(): reading API cache file vacli.tmp
+
+    ... the line above tells that cache has been found and read successfully
+
+    2015-10-05 12:13:14 INFO: RestClient.get_href(group: vms, tag: None, ref: None)
+    2015-10-05 12:13:14 INFO: RestClient.get_root(tag: None)
+    2015-10-05 12:13:14 INFO: RestClient.get_root(): cache hit for href: https://amsa1.cloud.verizon.com/api/compute
+
+    ... and here we can see that we saved one API call already by hitting the cache
+
+    2015-10-05 12:13:14 INFO: RestClient.request(verb: GET, url: https://amsa1.cloud.verizon.com/api/compute/vm/?limit=100)
+    2015-10-05 12:13:16 INFO: RestClient.request: TTFB: 2.151 sec, response read: 0.085 sec
+
+    ... talking of performance, now the time to the first byte and for fetching response is measured as well
+
+    2015-10-05 12:13:16 INFO: RestClient.response: 200 OK
+
+2. Decreasing API chattiness
+    As you may have seen from above example, there is a significant difference
+    between TTFB and response read times, poining back to the same issue -
+    protocol latency. Without diving deep and discussing more advance
+    optimization options, the long story short - the less the number of HTTP
+    request/response ping-pongs, the less overall API transaction time
+    is going to be. Employing caches may help to save on some API calls and
+    another improvement is coming from API feature allowing to fetch so called
+    "deep" JSON, where referenced objects are fully populated not a mere HREF
+    links.
+
+    The best it may be explained on example. Say we need to find all IPs
+    belonging to the given VM as well as information about all disks attached
+    to it. The usual approach is to:
+    - fetch VM objects (API call)
+    - for each VM fetch "vnics" collection (N x API calls)
+    - for each VM fetch "vdiskMounts" collection (N x API call)
+
+    It's easy to see that as number of VM grows, the number of required API
+    calls grows linearly along with it. Thus for 500 VMs, we're talking
+    about 1001 API calls at least.
+
+    The good news, starting from GOL 1.9.10, it's possible to pack it all into
+    a single API call, e.g.
+
+    $ ./vacli get --href https://iadb1.cloud.verizon.com/api/compute/vm/?expand=_item.vdiskMounts,_item.vnics
+
+    This single call will fetch "vnics" and "vdiskMounts" data and populate
+    corresponding JSON subtrees for every VM. Considering the TTFB time is
+    1 sec in average, the whole transaction that used to take 1000+ seconds
+    or 16+ min will take only couple seconds now.
+
+
 LOGGING AND DEBUGGING
 
 1.  Increasing output verbosity
-    You may want to increase verbosity to see specific API calls performed, their
-    inputs and output. For this, use the --log-level global option. The `info' log-level
-    does provide lot of details. The `debug' log-level goes even further, providing
-    raw HTTP request/response details.
+    You may want to increase verbosity to see specific API calls performed,
+    their inputs and output. For this, use the --log-level global option. The
+    `info' log-level does provide lot of details. The `debug' log-level goes
+    even further, providing raw HTTP request/response details.
 
 2.  Storing log messages to the file
     If you don't want to clutter output with additional debug messaged, you can divert
@@ -304,3 +459,136 @@ one of the following options a try:
 
 2.  Jq is a lightweight and flexible command-line JSON processor.
     http://stedolan.github.io/jq/
+
+
+FAQ
+Why didn't you tell? Why didn't you ask? :)
+
+01. Where do I get the access keys?
+    If you have access to the Cloud Console (aka Web UI), please proceed to the
+    'My Profile' -> 'API Keys' page. There you can create a pair of access and
+    secret keys and specify the level access for the associated API user.
+    Otherwise, please contact your cloud-space or cloud account administrator
+    and request the keys from them.
+
+02. Where can I find the corresponding API endpoint?
+    Each cloud instance may have a separate API endpoint URL. You can either
+    ask your account administrator or do some discovery on your own:
+
+    $ ./vacli get-resource-groups --table
+    name         href
+    US-NorthEast https://iadg2.cloud.verizon.com/api/compute/
+    US-Central   https://egwa1.cloud.verizon.com/api/compute/
+    US-West      https://sjca1.cloud.verizon.com/api/compute/
+    EU-North     https://amsa1.cloud.verizon.com/api/compute/
+    LATAM-East   https://grua1.cloud.verizon.com/api/compute/
+    EU-UK-North  https://uk5a1.cloud.verizon.com/api/compute/
+
+03. Where can I find the account and the cloud-space IDs?
+    You can either ask your administrator or find out yourself, looking to the
+    full qualified resource ID in the Cloud Console (Web UI).
+
+    For example, the following Resource Identified for the VM gives you all
+    details you may need:
+
+    dc=vz-cloud,s=compute,c=US,l=iadb1,acct=1-12ABC33,cs=35fa...,type=vm,id=a6555c47...
+
+    l    - your cloud instance (or location)
+    acct - your account ID
+    cs   - your cloud-space ID
+
+04. I'm getting syntax errors. What's wrong?
+    If you're seeng something like below:
+
+    ...
+      File "vacli", line xxx
+    headers = {k: v for k, v in (kv.split(':', 1) for kv in args.headers if ':' in kv)} if args.headers else None
+                      ^
+    SyntaxError: invalid syntax
+
+    The issue is, unfortunately, with syntax, namely with various syntax
+    variations supported by different python versions. The error above is
+    basically saying that the comprehension syntax is not supported in your
+    python version. You need python 2.7 at least.
+
+05. The name is too long. Can I rename the `vacli' script?
+    Yes, you definitely can do this. The only thing to keep in mind - you
+    may also need to change the script name in the vacli.bash script in
+    case if you use shell auto-completion, otherwise, there are no other
+    dependencies.
+
+06. Can I move .vacli config file elsewhere?
+    By default it's assumed that the config file is located in the same folder
+    as the `vacli' script itself. If you want to place the config file to a
+    different location you'll need to instruct the script on where to look for
+    configuration, e.g.
+
+    $ ./vacli --config-file ~/etc/.vacli get-root
+
+07. I can see create-vm, but there is no corresponding delete-vm command. Did
+    I miss something?
+    It's a valid question and the reason for not having per resource-type
+    delete command is rather simple - the DELETE command is resource type
+    agnostic and for resource removal you just use the `delete' command
+    provided with space separated list of resource HREFs, e.g.
+
+    $ ./vacli delete --href href#1 href#2 href#3 ...
+
+08. I'm getting socket error (8). What does it mean?
+    If you're getting the following error when trying to execute command -
+    "Got socket error (8) nodename nor servname provided, or not known",
+    the reason is most probably in no access to the API endpoint. In this
+    case you may need to use a proxy server. If you have proxy in place,
+    please validate if it's working and allowing you to pass through it.
+
+09. I'm getting an API Exception. Am I doing something wrong?
+    It's hard to say in general since issue may be really with API itself,
+    with the way how specific API call is made or, dare I say, with the script
+    itself :) Please report this issue to maintainers (see SUPPORT section).
+    When submitting your question, please provide at least the `info' or yet
+    better `debug' log output (just make sure you've removed all keys and other
+    sensitive information). Having more details will help to reproduce and
+    investigate your case.
+
+10. There is a feature/function I desperately need. Can you implement it?
+    As it's been already said in SUPPORT section, this code and the whole
+    project provided as-is, as example code with no support committment.
+    Nonetheless, we'll definitely review your request and as time permits
+    we may possibly have a solution for you.
+
+11. I'm a paranoid admin. Is is a good idea at all to provide API access to
+    the end users? Can they zap the whole environment?
+    As they say - "with the great power comes great responsibility". In this
+    case it's an admin's responsibility, not users'. This is to say, that the
+    tool itself won't give the user more access than they get allocated by
+    admin (through the role assignment and RBAC) and can already exercise
+    in the Cloud Console (Web UI). For example, read-only API user won't be
+    able to cause any harm even intentionally.
+    Saying that, the tool is definitely requiring some basic knowledge on
+    the user's part and may be a good addition for power and advanced users
+    toolkit.
+
+12. Is this tool supported on Windows?
+    Yes, it is. The tool will work the same way on Windows as it works on
+    other platforms. Actually, it's a Python feature. You need to be aware,
+    though, about some Windows specifics as setting environment variables,
+    etc... Unless you're using Cygwin, the shell auto-completion will not
+    work on Windows, since it's a Bash shell feature.
+
+13. Can I call the CLI tool from CRON or other script?
+    Yes, you can. The only caveat, you got to make sure that all required
+    paths and environment variables are set accordingly. You'll also need
+    to make sure that .vacli config is found. You can either provide an
+    absolute path via command-line option or yet better change current
+    working dir to the script deployment location.
+
+    For example:
+
+    $ crontab -l
+    # API ping from CRON
+    * * * * *	/usr/bin/python /tmp/vacli/vacli --config-file /tmp/vacli/.vacli get-root >> /tmp/vacli/vacli.log 2>&1
+
+    or, more preferrable way
+
+    # API ping from CRON
+    * * * * *	cd /tmp/vacli && /usr/bin/python vacli get-root >> vacli.log 2>&1
