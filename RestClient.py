@@ -8,7 +8,7 @@ PROPRIETARY/CONFIDENTIAL
 Copyright (c) 2015 Verizon, All Rights Reserved.
 Not for disclosure without written permission.
 
-Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@intl.verizon.com)
+Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@de.verizon.com)
 Project: Verizon Cloud Automation
 
 Generic wrapper around Verizon Cloud API.
@@ -16,8 +16,8 @@ Generic wrapper around Verizon Cloud API.
 -------------------------------------------------------------------------------
 """
 
-__author__ = 'Slava Vladyshevsky <vyacheslav.vladyshevsky@intl.verizon.com'
-__version__ = '0.1.1'
+__author__ = 'Slava Vladyshevsky <slava.vladyshevsky@gmail.com'
+__version__ = '0.1.3'
 
 import base64
 import hmac
@@ -31,6 +31,8 @@ import socket
 import uuid
 import logging as log
 
+# cache on-disk cache for some immutable data to speed-up API calls
+CACHE_FILE='vacli.tmp'
 # format for the timestamp used in HTTP headers, according to the RFC1123
 TIMESTAMP_FORMAT = '%a, %d %b %Y %H:%M:%S GMT'
 # MIME type definition for the job (status) resource
@@ -52,6 +54,16 @@ API_VERBS = [
     'DELETE',   # delete a resource
     'OPTIONS'   # discover available methods and other options for a resource
 ]
+
+
+class Timer:
+    def __enter__(self):
+        self.start = time.time()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.interval = self.end - self.start
 
 
 class ArgumentException(Exception):
@@ -80,11 +92,11 @@ class CloudApiAuth(object):
         self.header_prefix = re.compile(HEADER_REGEX, re.I)
         self.key_id = str(key_id)
         if not self.key_id:
-            raise ArgumentException("No key ID provided")
+            raise ArgumentException('No key ID provided')
 
         self.secret_key = str(secret_key)
         if not self.secret_key:
-            raise ArgumentException("No secret key provided")
+            raise ArgumentException('No secret key provided')
 
     def add_auth_headers(self, verb, headers, path, query):
         """ Adds HMAC signed authorization header
@@ -152,7 +164,12 @@ class CloudApiAuth(object):
         arg_list = [path.lower()]
         for kv in query.split('&', 1):
             k, v = kv.split('=', 1)
-            arg_list.append('%s:%s' % (k.lower(), v))
+
+            # Since shield (SVS) expects the signature for the URL to be based on lower case values, any upper case
+            # character fails the signature validation. But VCC expects the case sensitive expand option as defined.
+            # To work-around this issue, the signature for the URL should be created with all lower case values
+            # (just for the URL portion) but pass in the URL with the  camelCased expand option
+            arg_list.append('%s:%s' % (k.lower(), v.lower()))
 
         return '\n'.join(sorted(arg_list))
 
@@ -168,7 +185,7 @@ class CloudApiAuth(object):
 
         See http://cloud.verizon.com/documentation/APIAuthentication_1.htm
         """
-        signature = "\n".join(
+        signature = '\n'.join(
             [
                 verb,
                 headers.get('Content-Length', ''),
@@ -183,7 +200,7 @@ class CloudApiAuth(object):
 
 
 class RestClient(object):
-    __name__ = "RestClient"
+    __name__ = 'RestClient'
 
     @staticmethod
     def print_json(data):
@@ -201,7 +218,7 @@ class RestClient(object):
             for row in rows:
                 print fmt % tuple(row)  # print each row using the computed format
 
-    def __init__(self, base_url, auth, account=None, cloudspace=None):
+    def __init__(self, base_url, auth, account=None, cloudspace=None, proxy=None):
         log.info('%s.init(base_url: %s)' % (self.__name__, base_url))
         url_parts = httplib.urlsplit(base_url)
         self.host = url_parts.hostname
@@ -209,27 +226,43 @@ class RestClient(object):
         self.auth = auth
         self.account = account
         self.cloudspace = cloudspace
+        self.proxy = proxy
         self.conn = None
-        self.cache = {}
         self.redirect_attempt = 0
 
+        self.cache = {}
+        try:
+            with open(CACHE_FILE) as cache_file:
+                log.info('%s.init(): reading API cache file %s' % (self.__name__, CACHE_FILE))
+                self.cache = json.load(cache_file)
+        except Exception:
+            log.info('%s.init(): cannot read cache' % self.__name__)
+
     def get_root_master(self):
-        log.info("%s.get_root_master()" % self.__name__)
-        href = "%s://%s/api/" % (self.scheme, self.host)
+        log.info('%s.get_root_master()' % self.__name__)
+        href = '%s://%s/api/' % (self.scheme, self.host)
         return self.get(href)
 
     def get_root(self, tag=None):
-        log.info("%s.get_root(tag: %s)" % (self.__name__, tag))
-        href = "%s://%s/api/compute" % (self.scheme, self.host)
+        log.info('%s.get_root(tag: %s)' % (self.__name__, tag))
+        href = '%s://%s/api/compute' % (self.scheme, self.host)
         if tag:
-            href = "%s/tag/%s" % (href, tag)
+            href = '%s/tag/%s' % (href, tag)
 
         if href in self.cache:
             root = self.cache[href]
-            log.info("%s.get_root(...): cache hit for href: %s" % (self.__name__, href))
+            log.info('%s.get_root(): cache hit for href: %s' % (self.__name__, href))
         else:
             root = self.get(href)
             self.cache[href] = root
+
+            try:
+                with open(CACHE_FILE, 'w') as f:
+                    log.info('%s.get_root(): flushing cache' % self.__name__)
+                    f.write(json.dumps(self.cache))
+            except Exception, ex:
+                log.info('%s.get_root(): cannot flush cache file %s: %s)' % (CACHE_FILE, ex))
+
         return root
 
     def get_href(self, group=None, tag=None, ref=None):
@@ -267,11 +300,23 @@ class RestClient(object):
         if url_parts.scheme:
             self.scheme = url_parts.scheme
 
-        # we'll support plain HTTP, though HTTPS is a clear preference, obviously
+        if self.proxy:
+            proxy_url = httplib.urlsplit(self.proxy)
+            if not proxy_url.scheme:
+                proxy_url = httplib.urlsplit('http://' + self.proxy)
+
+            host = proxy_url.netloc
+            log.info('%s.request via proxy %s' % (self.__name__, host))
+        else:
+            host = self.host
+
+        # plain HTTP is supported, though HTTPS is a clear preference
         if self.scheme == 'http':
-            self.conn = httplib.HTTPConnection(self.host)
+            self.conn = httplib.HTTPConnection(host)
         elif self.scheme == 'https':
-            self.conn = httplib.HTTPSConnection(self.host)
+            self.conn = httplib.HTTPSConnection(host)
+            if self.proxy:
+                self.conn.set_tunnel(self.host, 443)
         else:
             raise APIException('Unsupported protocol: %s' % self.scheme)
 
@@ -289,6 +334,8 @@ class RestClient(object):
             'x-tmrk-nonce': uuid.uuid1(),
             # header required by eCloud API, it's not used and tolerated by George
             'x-tmrk-version': API_VERSION,
+            # required for proxy to work properly
+            'Host': self.host,
             # custom headers
             'Accept-Language': 'en-US',
             'User-Agent': USER_AGENT
@@ -305,15 +352,25 @@ class RestClient(object):
         log.debug('%s.request:body: \n%s' % (self.__name__, body))
 
         try:
-            self.conn.request(verb, resource, body, request_headers)
-            response = self.conn.getresponse()
-            response_body = response.read()
+            ttfb_time = 0
+            read_time = 0
+            with Timer() as t:
+                self.conn.request(verb, resource, body, request_headers)
+                response = self.conn.getresponse()
+
+            ttfb_time = t.interval
+            with Timer() as t:
+                response_body = response.read()
+
+            read_time = t.interval
             response.close()
 
         except socket.error, (rc, msg):
-            raise APIException("Got socket error (%d) %s" % (rc, msg))
+            raise APIException('Got socket error (%d) %s' % (rc, msg))
         except httplib.ResponseNotReady:
-            raise APIException("Got ResponseNotReady exception")
+            raise APIException('Got ResponseNotReady exception')
+        finally:
+            log.info('%s.request: TTFB: %.03f sec, response read: %.03f sec' % (self.__name__, ttfb_time, read_time))
 
         log.info('%s.response: %d %s' % (self.__name__, response.status, response.reason))
         log.debug('%s.response:headers: \n%s' %
@@ -356,7 +413,7 @@ class RestClient(object):
 
         <Error message="Authentication is required." majorErrorCode="401" minorErrorCode="AuthenticationRequired"/>
         """
-        raise APIException("%d %s\n%s" % (response.status, response.reason, response_body))
+        raise APIException('%d %s\n%s' % (response.status, response.reason, response_body))
 
     def get_array(self, url, extra_headers={}):
         items = []
@@ -364,7 +421,8 @@ class RestClient(object):
         while next_href:
             page = self.get(next_href, extra_headers)
             next_href = page['next']['href'] if 'next' in page else None
-            items += page['items']
+            if 'items' in page:
+                items += page['items']
         return items
 
     def get(self, url, extra_headers={}):
@@ -390,7 +448,7 @@ class RestClient(object):
 
         if data:
             if data.get('type'):
-                headers["Content-Type"] = data['type']
+                headers['Content-Type'] = data['type']
             data = json.dumps(data)
 
         if extra_headers:
@@ -407,7 +465,7 @@ class RestClient(object):
             data_type = data.get('type')
             if data_type:
                 headers['Accept'] = data_type
-                headers["Content-Type"] = data_type
+                headers['Content-Type'] = data_type
             data = json.dumps(data)
 
         if extra_headers:
@@ -425,7 +483,7 @@ class RestClient(object):
             data_type = data.get('type')
             if data_type:
                 # headers['Accept'] = data_type
-                headers["Content-Type"] = data_type
+                headers['Content-Type'] = data_type
             data = json.dumps(data)
 
         if extra_headers:
@@ -444,7 +502,7 @@ class RestClient(object):
                 result[job_href] = job
                 status = job['status']
                 log.info(
-                    "job id: %s name: %s status: %s progress: %d%%" % (job['id'], job['name'], status, job['progress']))
+                    'job id: %s name: %s status: %s progress: %d%%' % (job['id'], job['name'], status, job['progress']))
                 if status in ['COMPLETE', 'CANCELED', 'CANCELING', 'FAILED']:
                     running_jobs.remove(job_href)
             # first poll then wait if job list is not empty
