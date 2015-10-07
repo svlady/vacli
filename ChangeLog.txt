@@ -1,0 +1,18 @@
+0.1.3
++ Added API cache to store immutable API call results locally and effectively halving the number of API calls
++ Added HTTP Response timing. TTFB (time to first byte) and response fetch time is shown under the `info' log facility
++ Made it configurable and increased the page size for collections, effectively reducing huge collections fetch time
+* Changed proxy parameter handling to expect URL, not a hostname. The standard HTTP_PROXY variable format works now
+* CloudApi workaround for camel-case URL parameters to pass signature validation
++ Added support for `expand' request parameter for deep JSON (requires GOL 1.9.10)
++ Added more documentation: SUMMARY, SUPPORT, PREQUISITES, FAQ sections
++ Added ChangeLog
+
+0.1.2
++ Added Http Proxy support
+* Fixed RestClient.get_array() to handle missing `items' collection
+
+0.1.1
+= Fork from vccli project
+= Refactoring and code cleanup
+= Improved exception handling
