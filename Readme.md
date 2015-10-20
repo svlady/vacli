@@ -56,14 +56,17 @@ due to the syntax changes and compatibility constraints.
 
 The tool does not depend on any external modules or libraries and may be used
 right away as soon as you have your credentials and access point details setup.
+The configuration options may be specified in several ways.
 
-The configuration options may be specified in several ways:
-
-* You can put your access and secret key as well as some additional parameters
+#### Configuration File .vacli
+You can put your access and secret key as well as some additional parameters
 into the .vacli configuration file, which is normally placed in the folder,
-where vacli script resides. In the example below, the "default" subsection is
-a so called profile. You may define multiple profiles and switch between them 
-using the --profile option. If no profile given, the "default" profile is used.
+where vacli script resides. Shall you need to use configuration located elsewhere
+make sure you added --config-file switch to tell where to look for settings
+
+In the example below, the "default" subsection is a so called profile. You may 
+define multiple profiles and switch between them using the --profile option. 
+If no profile given, the "default" profile is used.
 ```
 $ cat .vacli_example
 {
@@ -80,11 +83,12 @@ $ cat .vacli_example
    }
 }
 
-$ ./vacli --profile default get-root
+$ ./vacli --config-file /etc/vacli/vacli.cfg --profile default get-root
 
 ```
 
-* You can specify (override) all or some configuration parameters using the shell
+#### Shell Environment Variables
+You can specify (override) all or some configuration parameters using the shell
 environment variables. For example:
 
 ```
@@ -101,7 +105,9 @@ API_ENDPOINT="https://amsa1.cloud.verizon.com"
 export API_USER API_ORG API_ACCOUNT API_CLOUD_SPACE \
 API_ACCESS_KEY API_SECRET_KEY API_ENDPOINT
 ```
-* Eventually, you can specify (override) all or some configuration parameters
+
+#### Command Line Switches
+Eventually, you can specify (override) all or some configuration parameters
 using command line arguments. For example:
 
 ```
@@ -110,7 +116,7 @@ $ ./vacli --api-access-key="6451af2..." --api-secret-key="RrIOESzok..." get-root
 
 Obviously, you can combine all three methods. In this case configuration file
 values are overridden by environment variable, which are in turn overriden by
-the command line options
+the command line options.
 
 ### USING PROXY
 Sometimes egress HTTP/HTTPS calls are not allowed and the only way to access
@@ -253,7 +259,7 @@ $ . vacli.bash
 Wasn't it easy?
 
 #### Using Bash auto-completion
-Just type ./vacli and press <TAB> twice. This will produce a list with available commands, e.g.
+Just type ./vacli and press [TAB] twice. This will produce a list with available commands, e.g.
 ```
 $ ./vacli <double TAB here>
 delete                get-root-master       list-vnets            vdisk-create          vm-list-mounts
