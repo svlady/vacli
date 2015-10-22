@@ -8,7 +8,7 @@ PROPRIETARY/CONFIDENTIAL
 Copyright (c) 2015 Verizon, All Rights Reserved.
 Not for disclosure without written permission.
 
-Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@de.verizon.com)
+Author:  Slava Vladyshevsky <slava(a)verizon.com>
 Project: Verizon Cloud Automation
 
 Verizon Cloud CLI utility
@@ -21,7 +21,7 @@ import logging as log
 import sys
 import os
 
-__author__ = 'Slava Vladyshevsky <slava.vladyshevsky@gmail.com'
+__author__ = 'Slava Vladyshevsky <slava(a)verizon.com>'
 __version__ = '0.1.3'
 
 # supported LOG levels mapped to logging module constants
@@ -221,7 +221,7 @@ class JobCommand(Command):
         return time.strftime(fmt, time.localtime(int(timestamp) / 1000))
 
     @staticmethod
-    def format_time(job):
+    def format_job(job):
         """format job time fields and calculate job duration"""
         if 'startTime' in job:
             if 'endTime' in job:
@@ -230,13 +230,17 @@ class JobCommand(Command):
 
             job['startTime'] = JobCommand.strtime(job['startTime'])
 
+        if 'target' in job:
+            job['targetHref'] = job['target']['href']
+            job['targetName'] = getattr(job['target'], 'name', '')
+
         return job
 
 
 class JobList(JobCommand):
     """Get a list of the last N jobs."""
     action = 'job-list'
-    cols = ['id', 'operation', 'startTime', 'endTime', 'runTime', 'progress', 'status']
+    cols = ['startTime', 'operation', 'targetHref', 'status']
 
     def add_options(self):
         self.args.add_argument('--last', type=int, metavar='N', nargs='?', const=10, default=10,
@@ -253,7 +257,9 @@ class JobList(JobCommand):
         if offset > 0:
             jobs = api.get('%s&offset=%d' % (href, offset))
 
-        return map(self.format_time, jobs['items'])
+        # sorting jobs by startTime
+        sorted_jobs = sorted(jobs['items'], key=lambda k: k['startTime'])
+        return map(self.format_job, sorted_jobs)
 
 
 class JobPoll(JobCommand):
@@ -275,7 +281,7 @@ class JobPoll(JobCommand):
     def run(self, api, args):
         jobs = [api.get_href(group='jobHistory', ref=job) for job in args.job]
         result = api.poll_jobs(jobs, args.poll_interval, args.timeout)
-        return map(self.format_time, result.values())
+        return map(self.format_job, result.values())
 
 
 class AclCommand(Command):
