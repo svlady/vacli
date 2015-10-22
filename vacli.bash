@@ -6,7 +6,7 @@
 #    Copyright (c) 2015 Verizon, All Rights Reserved.
 #    Not for disclosure without written permission.
 #
-#    Author:  Vyacheslav Vladyshevsky (vyacheslav.vladyshevsky@de.verizon.com)
+#    Author:  Slava Vladyshevsky <slava(a)verizon.com>
 #    Project: Verizon Cloud Automation
 #
 #    Bash auto-completion for vacli tool
