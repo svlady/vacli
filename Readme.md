@@ -115,7 +115,7 @@ $ ./vacli --api-access-key="6451af2..." --api-secret-key="RrIOESzok..." get-root
 ```
 
 Obviously, you can combine all three methods. In this case configuration file
-values are overridden by environment variable, which are in turn overriden by
+values are overridden by environment variable, which are in turn overridden by
 the command line options.
 
 ### USING PROXY
@@ -185,7 +185,7 @@ $ ./vacli --log-level info list-vms --table
 
 #### Decreasing API chattiness
 As you may have seen from above example, there is a significant difference
-between TTFB and response read times, poining back to the same issue -
+between TTFB and response read times, pointing back to the same issue -
 protocol latency. Without diving deep and discussing more advance
 optimization options, the long story short - the less the number of HTTP
 request/response ping-pongs, the less overall API transaction time
@@ -556,7 +556,7 @@ investigate your case.
 
 #### There is a feature/function I desperately need. Can you implement it?
 As it's been already said in SUPPORT section, this code and the whole
-project provided as-is, as example code with no support committment.
+project provided as-is, as example code with no support commitment.
 Nonetheless, we'll definitely review your request and as time permits
 we may possibly have a solution for you.
 
@@ -592,7 +592,7 @@ $ crontab -l
 # API ping from CRON
 * * * * *	/usr/bin/python /tmp/vacli/vacli --config-file /tmp/vacli/.vacli get-root >> /tmp/vacli/vacli.log 2>&1
 ```
-or, more preferrable way
+or, more preferable way
 ```
 # API ping from CRON
 * * * * *	cd /tmp/vacli && /usr/bin/python vacli get-root >> vacli.log 2>&1
