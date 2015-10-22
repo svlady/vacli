@@ -5,8 +5,11 @@
 * Changed proxy parameter handling to expect URL, not a hostname. The standard HTTP_PROXY variable format works now
 * CloudApi workaround for camel-case URL parameters to pass signature validation
 + Added support for `expand' request parameter for deep JSON (requires GOL 1.9.10)
-+ Added more documentation: SUMMARY, SUPPORT, PREQUISITES, FAQ sections
++ Added more documentation: SUMMARY, SUPPORT, PREQUISITES, FAQ sections and changed to github friendly markdown format
 + Added ChangeLog
+* Changed emails to internet friendly version
+* Changed default job list format to 'startTime operation targetHref status'
++ Job list is sorted by job start time now
 
 0.1.2
 + Added Http Proxy support
