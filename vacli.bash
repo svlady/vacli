@@ -126,10 +126,10 @@ _vacli()
             vm-create)
                 args="--name --description --tags --cpus --cpu-speed --memory --iops --vdisks --vdisk-template \
                     --public-ip --vnets --bandwidth --guest-options --wait --dry-run" ;;
-#            vm-edit)
-#                args="--vm --name --tags --description" ;;
+            vm-edit)
+                args="--vm --name --description --tags --cpus --cpu-speed --memory --guest-options --dry-run" ;;
             vm-add-vnic)
-                args="--vm --vnet --ipv4 --description --public-ip --bandwidth --wait --dry-run" ;;
+                args="--vm --vnet --ipv4 --mac --description --public-ip --bandwidth --wait --dry-run" ;;
             vm-add-vdisk)
                 args="--vm --vdisk --iops --boot --wait --dry-run" ;;
             vm-list-mounts)
