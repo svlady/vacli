@@ -820,6 +820,7 @@ class VMCreate(Command):
 
     @staticmethod
     def attach_vnet(vm, vnet, bandwidth, index=Command.counter()):
+        # TODO: add MAC address
         vnic = {
             'type': 'application/vnd.terremark.ecloud.vnic.v1+json',
             'number': index.next(),
@@ -909,9 +910,43 @@ class VMCreate(Command):
 
 
 class VMEdit(Command):
-    """Edit virtual machine (VM)."""
+    """Edit virtual machine (VM) resource properties."""
     action = 'vm-edit'
-    # TODO: implement vm-edit command
+
+    def add_options(self):
+        self.args.add_argument('--vm', metavar='uid', required=True,
+                               help='virtual disk (vdisk) UID or HREF')
+        self.args.add_argument('--name', help='(optional) disk name')
+        self.args.add_argument('--tags', nargs='*', metavar='tag',
+                               help='(optional) space separated list of tags associated with this resource')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--cpus', type=int, metavar='N', default=1, dest='processorCores',
+                               help='(optional) number of CPU cores')
+        self.args.add_argument('--cpu-speed', type=int, metavar='MHz', default=500, dest='processorSpeed',
+                               help='(optional) CPU speed in Mhz, default: 500, max: 2000')
+        self.args.add_argument('--memory', type=int, metavar='MB', default=512,
+                               help='(optional) RAM size in MBs, default: 512')
+        self.args.add_argument('--guest-options', metavar='key=val', nargs='*',
+                               help='(optional) list of key=val pairs used for guest customization, '
+                                    'for specific options please check template details')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        vm_info = {'type': 'application/vnd.terremark.ecloud.vm.v1+json'}
+        self.copy_args(vars(args), vm_info,
+                       ['name', 'tags', 'description', 'processorCores', 'processorSpeed', 'memory'])
+
+        if args.guest_options:
+            vm_info['guestCustomizations'] = [
+                {'key': k, 'value': v} for k, v in (kv.split('=', 1) for kv in args.guest_options if '=' in kv)
+            ]
+
+        if args.dry_run:
+            return vm_info
+
+        href = api.get_href(group='vms', ref=args.vm)
+        return api.patch(href, vm_info)
 
 
 class VNicAdd(Command):
@@ -924,6 +959,10 @@ class VNicAdd(Command):
                                help='virtual machine to add vnic to')
         self.args.add_argument('--vnet', metavar='uid',
                                help='(optional) virtual network (vnet) to attach vnic to')
+        # currently MAC address can only be set during the VM creation, for vNics added later this parameter change
+        # is not implemented, the provided value is ignored and backend is generating some random MAC value
+        self.args.add_argument('--mac', metavar='AA:BB:CC:DD:EE:FF',
+                               help='(optional) MAC address to configure vnic with')
         self.args.add_argument('--ipv4', metavar='x.x.x.x', dest='ipv4Address',
                                help='(optional) private IP to configure vnic with')
         self.args.add_argument('--public-ip', metavar='uid', help='(optional) public IP to attach vnic to')
@@ -955,7 +994,7 @@ class VNicAdd(Command):
                 'href': api.get_href(group='ipAddresses', ref=args.public_ip)
             }
 
-        self.copy_args(vars(args), info, ['bandwidth', 'description', 'ipv4Address'])
+        self.copy_args(vars(args), info, ['bandwidth', 'description', 'ipv4Address', 'mac'])
         ref = api.get_href(group='vms', ref=args.vm)
         vm = api.get(ref)
         vnics_href = vm['vnics']['href']
