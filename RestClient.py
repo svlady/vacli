@@ -177,7 +177,6 @@ class CloudApiAuth(object):
         """ Build a signature string
 
         stringToSign = {VERB} "\n"
-                       {Content-Length} "\n"      <-- this one in eCLoud specification only, though VecA taking it too
                        {Content-Type} "\n"
                        {Date} "\n"
                        {CanonicalizedHeaders}
@@ -188,7 +187,6 @@ class CloudApiAuth(object):
         signature = '\n'.join(
             [
                 verb,
-                headers.get('Content-Length', ''),
                 headers.get('Content-Type', ''),
                 headers['Date'],
                 self._canonical_headers(headers),
@@ -326,14 +324,12 @@ class RestClient(object):
             # these two headers required if multiple cloud-spaces belong to the same account
             'x-tmrk-acct': self.account,
             'x-tmrk-cloudspace': self.cloudspace,
-            'x-tmrk-dc': '%s://%s' % (self.scheme, self.host),
+            # 'x-tmrk-dc': '%s://%s' % (self.scheme, self.host),
             # x-tmrk-nonce header holds an optional random, unique identifier for each request. API services do not
             # allow a request with the same nonce to be replayed, guarding against replay attacks. The nonce should
             # be as unique as required, otherwise, if multiple clients using the same keys are executing requests
             # simultaneously there is a chance of collision.
             'x-tmrk-nonce': uuid.uuid1(),
-            # header required by eCloud API, it's not used and tolerated by George
-            'x-tmrk-version': API_VERSION,
             # required for proxy to work properly
             'Host': self.host,
             # custom headers
