@@ -4,6 +4,9 @@
 + Made it configurable and increased the page size for collections, effectively reducing huge collections fetch time
 * Changed proxy parameter handling to expect URL, not a hostname. The standard HTTP_PROXY variable format works now
 * CloudApi workaround for camel-case URL parameters to pass signature validation
++ Implemented vm-edit command to modify parameters for existing VMs
+- Removed some eCloud specific headers
+* Changed request signature to accomodate recent code changes
 + Added support for `expand' request parameter for deep JSON (requires GOL 1.9.10)
 + Added more documentation: SUMMARY, SUPPORT, PREQUISITES, FAQ sections and changed to github friendly markdown format
 + Added ChangeLog
