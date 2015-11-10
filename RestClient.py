@@ -17,7 +17,7 @@ Generic wrapper around Verizon Cloud API.
 """
 
 __author__ = 'Slava Vladyshevsky <slava(a)verizon.com>'
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 import base64
 import hmac
@@ -43,8 +43,6 @@ HEADER_REGEX = '^x-tmrk-(?!authorization)'
 USER_AGENT = 'VACli/%s' % __version__
 # maximum number of HTTP redirects to follow
 MAX_REDIRECTS = 3
-# supported API version
-API_VERSION = '2015-05-01'
 # implemented API verbs
 API_VERBS = [
     'GET',      # retrieve a single or collection of resources
@@ -285,7 +283,7 @@ class RestClient(object):
         if not url:
             raise ArgumentException('Missing URL for HTTP request')
 
-        # making sure the last connection has been terminated properly
+        # making sure the previous connection has been terminated properly
         if self.conn:
             self.conn.close()
 
@@ -347,24 +345,23 @@ class RestClient(object):
                   (self.__name__, '\n'.join(['%s: %s' % (k, v) for k, v in request_headers.items()])))
         log.debug('%s.request:body: \n%s' % (self.__name__, body))
 
+        ttfb_time = 0
+        read_time = 0
+
         try:
-            ttfb_time = 0
-            read_time = 0
             with Timer() as t:
                 self.conn.request(verb, resource, body, request_headers)
                 response = self.conn.getresponse()
 
             ttfb_time = t.interval
-            with Timer() as t:
-                response_body = response.read()
-
+            with Timer() as t: response_body = response.read()
             read_time = t.interval
-            response.close()
-
-        except socket.error, (rc, msg):
-            raise APIException('Got socket error (%d) %s' % (rc, msg))
+        except socket.error as msg:
+            raise APIException(msg)
         except httplib.ResponseNotReady:
             raise APIException('Got ResponseNotReady exception')
+        else:
+            response.close()
         finally:
             log.info('%s.request: TTFB: %.03f sec, response read: %.03f sec' % (self.__name__, ttfb_time, read_time))
 
