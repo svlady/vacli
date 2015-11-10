@@ -125,7 +125,7 @@ _vacli()
 #                args="--vnet --name --tags --description" ;;
             vm-create)
                 args="--name --description --tags --cpus --cpu-speed --memory --iops --vdisks --vdisk-template \
-                    --public-ip --vnets --bandwidth --guest-options --wait --dry-run" ;;
+                    --public-ip --vnet --mac --bandwidth --guest-options --wait --dry-run" ;;
             vm-edit)
                 args="--vm --name --description --tags --cpus --cpu-speed --memory --guest-options --dry-run" ;;
             vm-add-vnic)
@@ -134,8 +134,8 @@ _vacli()
                 args="--vm --vdisk --iops --boot --wait --dry-run" ;;
             vm-list-mounts)
                 args="--vm --table" ;;
-#            vnic-edit)
-#                args="--vnic --vnet --ipv4 --description --public-ip --bandwidth --wait --dry-run" ;;
+            vnic-edit)
+                args="--vnic --description --bandwidth --wait --dry-run" ;;
             update-iops)
                 args="--vdisk-mount --iops" ;;
             vm-ctl)
