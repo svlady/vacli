@@ -22,7 +22,7 @@ import sys
 import os
 
 __author__ = 'Slava Vladyshevsky <slava(a)verizon.com>'
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 # supported LOG levels mapped to logging module constants
 LOG_LEVELS = {'critical': log.CRITICAL,
@@ -166,7 +166,7 @@ class UpdateCommand(Command):
             return json_data
 
         headers = {k: v for k, v in (kv.split(':', 1) for kv in args.headers if ':' in kv)} if args.headers else None
-        return getattr(api, self.action)(args.href, data=json_data, headers=headers)
+        return getattr(api, self.action)(args.href, data=json_data, extra_headers=headers)
 
 
 class Patch(UpdateCommand):
@@ -793,11 +793,13 @@ class VMCreate(Command):
         self.args.add_argument('--vdisk-template', metavar='uid', dest='template',
                                help='(optional) template UID or HREF to create disk from')
         self.args.add_argument('--public-ip', metavar='uid', help='(optional) public IP to attach a vnic to')
-        self.args.add_argument('--vnets', metavar='uid', nargs='*',
-                               help='(optional) set of vnets to attach this VM to')
+        self.args.add_argument('--vnet', metavar='uid',
+                               help='(optional) the vnet to attach this VM to')
         self.args.add_argument('--bandwidth', type=int, default=100, metavar='Mbps',
                                help='(optional) reserved vnic bandwidth, default 100 Mbps. '
                                     'The aggregate bandwidth of all VM vnics must not exceed 1000 Mbps.')
+        self.args.add_argument('--mac', metavar='AA:BB:CC:DD:EE:FF',
+                               help='(optional) MAC address to configure vnic with')
         self.args.add_argument('--guest-options', metavar='key=val', nargs='*',
                                help='(optional) list of key=val pairs used for guest customization, '
                                     'for specific options please check template details')
@@ -819,13 +821,15 @@ class VMCreate(Command):
         vm['vdiskMounts']['items'].append(vdisk_mount)
 
     @staticmethod
-    def attach_vnet(vm, vnet, bandwidth, index=Command.counter()):
-        # TODO: add MAC address
+    def attach_vnet(vm, vnet, bandwidth, mac_address=None, index=Command.counter()):
         vnic = {
             'type': 'application/vnd.terremark.ecloud.vnic.v1+json',
             'number': index.next(),
             'bandwidth': bandwidth
         }
+
+        if mac_address:
+            vnic['mac'] = mac_address
 
         vnic.update(vnet)
         vm['vnics']['items'].append(vnic)
@@ -851,15 +855,14 @@ class VMCreate(Command):
                 ref = api.get_href(group='vdisks', ref=disk)
                 self.attach_vdisk(vm_info, {'href': ref}, args.iops)
 
-        if args.vnets:
-            for vnet in args.vnets:
-                vnet_info = {
-                    'vnet': {
-                        'type': 'application/vnd.terremark.ecloud.vnet.v1+json',
-                        'href': api.get_href(group='vnets', ref=vnet)
-                    }
+        if args.vnet:
+            vnet_info = {
+                'vnet': {
+                    'type': 'application/vnd.terremark.ecloud.vnet.v1+json',
+                    'href': api.get_href(group='vnets', ref=args.vnet)
                 }
-                self.attach_vnet(vm_info, vnet_info, args.bandwidth)
+            }
+            self.attach_vnet(vm_info, vnet_info, args.bandwidth, args.mac)
 
         if args.public_ip:
             ip_info = {
@@ -1074,7 +1077,31 @@ class VDiskMounts(Command):
 class VNicEdit(Command):
     """Edit virtual network interface (vnic) for the given VM."""
     action = 'vnic-edit'
-    # TODO: implement vnic-edit command
+
+    def add_options(self):
+        self.args.add_argument('--vnic', required=True, metavar='href',
+                               help='virtual NIC HREF to perform updates on')
+        self.args.add_argument('--bandwidth', type=int, default=100, metavar='Mbps',
+                               help='(optional) reserved vnic bandwidth in Mbps, default: 100.'
+                                    'The aggregate bandwidth of all VM vnics must not exceed 1000 Mbps.')
+        self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--wait', type=int, metavar='sec', nargs='?', default=0, const=60,
+                               help='(optional) how long to wait (in seconds) till job completion, default: 60')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
+
+    def run(self, api, args):
+        info = {'type': 'application/vnd.terremark.ecloud.vnic.v1+json'}
+        self.copy_args(vars(args), info, ['bandwidth', 'description', 'ipv4Address', 'mac'])
+
+        if args.dry_run:
+            return info
+
+        job = api.patch(args.vnic, info)
+        if args.wait:
+            job = self.wait(api, job['href'], args.wait)
+
+        return job
 
 
 class UpdateIops(Command):
