@@ -1,3 +1,10 @@
+0.1.4
+* socket.error exception handling changes
+* vm-create is connecting VM to a single vnet during the build
+* vm-create and vm-add-vnic allowing to set MAC address for vNIC, only first implemented on a backend side currently
+* fixed typo to allow extra headers use for low-level HTTP requests
++ implemented vnic-edit to adjust connection bandwidth
+
 0.1.3
 + Added API cache to store immutable API call results locally and effectively halving the number of API calls
 + Added HTTP Response timing. TTFB (time to first byte) and response fetch time is shown under the `info' log facility
