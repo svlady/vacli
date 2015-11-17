@@ -372,6 +372,47 @@ id                                   status os                     name        d
 a6998a94-6c02-4f7b-95c9-6640dc31c3fc ON     WINDOWS_SERVER_2012    Test RDP GW RDP Gateway for TEST Domain
 ```
 
+You can remove all assigned tags by providing an empty value to the --tags parameter:
+
+```
+$ ./vacli vm-edit --vm bc2ce4e9-3768-467c-8ac6-eb4215e1c8e8 --tags ''
+
+```
+
+You can replace existing tags by providing a new list of tags:
+
+```
+$ ./vacli vm-edit --vm bc2ce4e9-3768-467c-8ac6-eb4215e1c8e8 --tags api role:none app:test env:test
+
+...
+  "tags": [
+    "env:test",
+    "api",
+    "app:test",
+    "role:none"
+  ],
+...
+
+```
+
+Alternatively, you can append new tags to the existing tags collection. For this you'll need to use the '+' modifier.
+Please note that duplicated tags will be removed automatically and corresponding tags will be used only once.
+
+```
+$ ./vacli vm-edit --vm bc2ce4e9-3768-467c-8ac6-eb4215e1c8e8 --tags + group:trial env:test
+
+...
+  "tags": [
+    "env:test",
+    "api",
+    "app:test",
+    "role:none",
+    "group:trial"
+  ],
+...
+
+```
+
 #### Referencing Objects
 Every object in Verizon Cloud can be referenced by its URL or HREF and thus
 all commands accepting HREFs. For example:
