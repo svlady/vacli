@@ -4,6 +4,9 @@
 * vm-create and vm-add-vnic allowing to set MAC address for vNIC, only first implemented on a backend side currently
 * fixed typo to allow extra headers use for low-level HTTP requests
 + implemented vnic-edit to adjust connection bandwidth
+* fixed vm-edit command to allow tag management for running VMs
++ vm and vdisk resource tags can be cleaned, replaced or appended using + command modifier
++ added --dry-run option for vdisk-edit command
 
 0.1.3
 + Added API cache to store immutable API call results locally and effectively halving the number of API calls
