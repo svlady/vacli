@@ -118,7 +118,7 @@ _vacli()
             vdisk-create)
                 args="--name --description --tags --size --from-template --from-snapshot --fault-tolerance --wait --dry-run" ;;
             vdisk-edit)
-                args="--vdisk --name --tags --description" ;;
+                args="--vdisk --name --tags --description --dry-run" ;;
             vnet-create)
                 args="--name --description --tags --cidr --wait --dry-run" ;;
 #            vnet-edit)
