@@ -702,12 +702,31 @@ class VDiskEdit(Command):
         self.args.add_argument('--tags', nargs='*', metavar='tag',
                                help='(optional) space separated list of tags associated with this resource')
         self.args.add_argument('--description', metavar='...', help='(optional) resource description')
+        self.args.add_argument('--dry-run', action='store_true',
+                               help='(optional) do not perform action, just print JSON to be sent')
 
     def run(self, api, args):
-        info = {'type': 'application/vnd.terremark.ecloud.vdisk.v1+json'}
-        self.copy_args(vars(args), info, ['name', 'tags', 'description'])
-        ref = api.get_href(group='vdisks', ref=args.vdisk)
-        return api.patch(ref, info)
+        vdisk_info = {'type': 'application/vnd.terremark.ecloud.vdisk.v1+json'}
+        href = api.get_href(group='vdisks', ref=args.vdisk)
+
+        if args.tags:
+            # if '+' modified provided - appending tags to existing collection
+            if args.tags[0] == '+':
+                vdisk_tags = api.get(href)['tags']
+                vdisk_info['tags'] = vdisk_tags + args.tags[1:]
+            # if empty value provided - cleaning tags collection
+            elif args.tags[0] == '':
+                vdisk_info['tags'] = []
+            # otherwise replacing tags collection with the provided list
+            else:
+                vdisk_info['tags'] = args.tags
+
+        self.copy_args(vars(args), vdisk_info, ['name', 'description'])
+
+        if args.dry_run:
+            return vdisk_info
+
+        return api.patch(href, vdisk_info)
 
 
 class VNetCreate(Command):
@@ -923,11 +942,11 @@ class VMEdit(Command):
         self.args.add_argument('--tags', nargs='*', metavar='tag',
                                help='(optional) space separated list of tags associated with this resource')
         self.args.add_argument('--description', metavar='...', help='(optional) resource description')
-        self.args.add_argument('--cpus', type=int, metavar='N', default=1, dest='processorCores',
+        self.args.add_argument('--cpus', type=int, metavar='N', dest='processorCores',
                                help='(optional) number of CPU cores')
-        self.args.add_argument('--cpu-speed', type=int, metavar='MHz', default=500, dest='processorSpeed',
+        self.args.add_argument('--cpu-speed', type=int, metavar='MHz', dest='processorSpeed',
                                help='(optional) CPU speed in Mhz, default: 500, max: 2000')
-        self.args.add_argument('--memory', type=int, metavar='MB', default=512,
+        self.args.add_argument('--memory', type=int, metavar='MB',
                                help='(optional) RAM size in MBs, default: 512')
         self.args.add_argument('--guest-options', metavar='key=val', nargs='*',
                                help='(optional) list of key=val pairs used for guest customization, '
@@ -937,18 +956,31 @@ class VMEdit(Command):
 
     def run(self, api, args):
         vm_info = {'type': 'application/vnd.terremark.ecloud.vm.v1+json'}
+        href = api.get_href(group='vms', ref=args.vm)
+
+        if args.tags:
+            # if '+' modified provided - appending tags to existing collection
+            if args.tags[0] == '+':
+                vm_tags = api.get(href)['tags']
+                vm_info['tags'] = vm_tags + args.tags[1:]
+            # if empty value provided - cleaning tags collection
+            elif args.tags[0] == '':
+                vm_info['tags'] = []
+            # otherwise replacing tags collection with the provided list
+            else:
+                vm_info['tags'] = args.tags
+
         self.copy_args(vars(args), vm_info,
-                       ['name', 'tags', 'description', 'processorCores', 'processorSpeed', 'memory'])
+                       ['name', 'description', 'processorCores', 'processorSpeed', 'memory'])
 
         if args.guest_options:
             vm_info['guestCustomizations'] = [
                 {'key': k, 'value': v} for k, v in (kv.split('=', 1) for kv in args.guest_options if '=' in kv)
-            ]
+                ]
 
         if args.dry_run:
             return vm_info
 
-        href = api.get_href(group='vms', ref=args.vm)
         return api.patch(href, vm_info)
 
 
