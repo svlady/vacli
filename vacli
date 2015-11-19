@@ -216,7 +216,7 @@ class GetResourceGroups(Command):
 class JobCommand(Command):
     """Provides common helper methods for job-related commands."""
     @staticmethod
-    def strtime(timestamp, fmt='%D %H:%M'):
+    def strtime(timestamp, fmt='%m/%d/%y %H:%M'):
         """format unix timestamps as human readable date-time strings"""
         return time.strftime(fmt, time.localtime(int(timestamp) / 1000))
 
@@ -248,6 +248,7 @@ class JobList(JobCommand):
         self.args.add_argument('--table', metavar='key', nargs='*', default=None,
                                help='format output as a human readable table with given keys')
 
+    # TODO: work around --last N limitation, with N > 200
     def run(self, api, args):
         href = api.get_href(group='jobHistory')
         limit = args.last
