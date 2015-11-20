@@ -45,13 +45,13 @@ If you have any questions, suggestions or comments - feel free to contact:
 
 ### PREREQUISITES
 Due to the syntax and compatibility constraints the tool is supported for
-the Python version 2.7 only. Both Windows, Linux and MacOS versions were
+the Python version 2.7.x only. Both Windows, Linux and MacOS versions were
 tested.
 
 
 ### SETUP
 There is no real setup required. The vacli is a python script working with both
-Python 2.7. Unfortunately, earlier 2.4 and later versions 3.x are not supported
+Python 2.7. Unfortunately, earlier 2.x and later versions 3.x are not supported
 due to the syntax changes and compatibility constraints.
 
 The tool does not depend on any external modules or libraries and may be used
@@ -101,9 +101,10 @@ API_CLOUD_SPACE="60f28e75-..."
 API_ACCESS_KEY="6451af2..."
 API_SECRET_KEY="RrIOESzok..."
 API_ENDPOINT="https://amsa1.cloud.verizon.com"
+HTTP_PROXY="http://myproxy.corporate.com"
 
 export API_USER API_ORG API_ACCOUNT API_CLOUD_SPACE \
-API_ACCESS_KEY API_SECRET_KEY API_ENDPOINT
+API_ACCESS_KEY API_SECRET_KEY API_ENDPOINT HTTP_PROXY
 ```
 
 #### Command Line Switches
@@ -138,7 +139,7 @@ $ ./vacli --http-proxy XX.XX.XX.XX:3128 --log-level info get-root
    "href": "https://amsa1.cloud.verizon.com/api/compute",
 ...
 ```
-Note: the SOCKS protocol is not supported.
+Note: the SOCKS protocol and proxy auth are not supported.
 
 ### API PERFORMANCE AND CACHING
 One of the REST API benefits - using HTTP protocol as its transport is at the
@@ -203,7 +204,7 @@ to it. The usual approach is to:
 
 It's easy to see that as number of VM grows, the number of required API
 calls grows linearly along with it. Thus for 500 VMs, we're talking
-about 1001 API calls at least.
+about 1003 API calls at least.
 
 The good news, starting from GOL 1.9.10, it's possible to pack it all into
 a single API call, e.g.
@@ -241,11 +242,17 @@ $ ./vacli --log-level info --log-file vacli.log get-root
 ...
 
 $ cat vacli.log
-2015-06-12 12:52:53 INFO: RestClient.init(base_url: https://amsa1.cloud.verizon.com)
-2015-06-12 12:52:53 INFO: RestClient.get_root(tag: None)
-2015-06-12 12:52:53 INFO: RestClient.get(url: https://amsa1.cloud.verizon.com/api/compute)
-2015-06-12 12:52:53 INFO: RestClient.request(verb: GET, url: https://amsa1.cloud.verizon.com/api/compute)
-2015-06-12 12:52:54 INFO: RestClient.request(...).response: 200 OK
+2015-11-20 14:53:26 INFO: RestClient.init(base_url: https://amsa1.cloud.verizon.com)
+2015-11-20 14:53:26 INFO: RestClient.init(): reading API cache file vacli.tmp
+2015-11-20 14:53:26 INFO: RestClient.get_root(tag: None)
+2015-11-20 14:53:26 INFO: RestClient.get_root(): cache hit for href: https://amsa1.cloud.verizon.com/api/compute
+2015-11-20 14:54:10 INFO: RestClient.init(base_url: https://amsa1.cloud.verizon.com)
+2015-11-20 14:54:10 INFO: RestClient.init(): cannot read cache
+2015-11-20 14:54:10 INFO: RestClient.get_root(tag: None)
+2015-11-20 14:54:10 INFO: RestClient.request(verb: GET, url: https://amsa1.cloud.verizon.com/api/compute)
+2015-11-20 14:54:12 INFO: RestClient.request: TTFB: 1.097 sec, response read: 0.000 sec
+2015-11-20 14:54:12 INFO: RestClient.response: 200 OK
+2015-11-20 14:54:12 INFO: RestClient.get_root(): flushing cache
 ```
 
 ### AUTOCOMPLETION
@@ -262,13 +269,13 @@ Wasn't it easy?
 Just type ./vacli and press [TAB] twice. This will produce a list with available commands, e.g.
 ```
 $ ./vacli <double TAB here>
-delete                get-root-master       list-vnets            vdisk-create          vm-list-mounts
-fw-acl-add            job-list              options               vdisk-edit            vm-list-vnics
-fw-acl-del            job-wait              post                  vm-add-vdisk          vnet-create
-fw-acl-list           list-vdisk-templates  public-ip-add         vm-add-vnic           vnet-edit
-get                   list-vdisks           public-ip-del         vm-create             vnic-edit
-get-admin-root        list-vm-templates     public-ip-list        vm-ctl
-get-root              list-vms              update-iops           vm-edit
+delete                get-admin-root        list-vdisk-templates  list-vnics            public-ip-del         
+vdisk-edit            vm-edit               fw-acl-add            get-resource-groups   list-vdisks
+options               public-ip-list        vm-add-vdisk          vm-list-mounts        fw-acl-del
+get-root              list-vm-templates     patch                 put                   vm-add-vnic
+vnet-create           fw-acl-list           job-list              list-vms              post
+update-iops           vm-create             vnet-edit             get                   job-poll
+list-vnets            public-ip-add         vdisk-create          vm-ctl                vnic-edit
 $ ./vacli
 ```
 
@@ -289,12 +296,12 @@ optional arguments:
 $ ./vacli job-list --<double TAB here>
 --last   --table
 $ ./vacli job-list --last 5 --table
-id                                   operation          startTime      endTime        runTime progress status
-ccf92856-0ccb-438f-85ae-29448d76857a POWER_ON_VM        05/20/15 11:06 05/20/15 11:07 47      100      FAILED
-f6864969-790e-4d24-9d85-aee306a77b1b POWER_ON_VM        05/20/15 14:12 05/20/15 14:13 67      100      FAILED
-ab54db1b-9674-460d-8665-b3c2f519e289 POWER_ON_VM        05/20/15 11:07 05/20/15 11:09 114     100      FAILED
-51e8aa6e-4a6b-4778-938b-9692d50dfdbb ALLOCATE_IPADDRESS 05/21/15 15:28 05/21/15 15:28 0       100      COMPLETE
-5534c86f-aad5-4f00-8d67-c5a7b7ad7880 POWER_ON_VM        06/01/15 21:10 06/01/15 21:12 110     100      FAILED
+startTime      operation          target.href                                                                                  status
+09/03/15 11:32 POWER_OFF_VM       https://amsa1.cloud.verizon.com/api/compute/vm/ed23357d-2778-412e-995f-2cc0ef984160          COMPLETE
+11/10/15 12:05 ALLOCATE_IPADDRESS https://amsa1.cloud.verizon.com/api/compute/ip-address/3fb19d38-6088-4492-b1b4-91d230a15566  COMPLETE
+11/17/15 14:30 CREATE_VDISK       https://amsa1.cloud.verizon.com/api/compute/vdisk/c8992962-32af-4e78-bfa2-ad08f7509e7d       COMPLETE
+11/17/15 14:32 CREATE_VDISK_MOUNT https://amsa1.cloud.verizon.com/api/compute/vdisk-mount/b13ff15a-5674-4da9-87de-e29c97f03471 COMPLETE
+11/17/15 14:34 DELETE_VM          https://amsa1.cloud.verizon.com/api/compute/vm/bc2ce4e9-3768-467c-8ac6-eb4215e1c8e8          COMPLETE
 ```
 
 #### Some clever tricks
@@ -331,7 +338,8 @@ and so on...
 All vacli commands normally producing a JSON output. You can use jq or jmespath to
 query and filter resulting JSON and chain multiple calls using UNIX pipes. Sometimes,
 however, it's more convenient to work with a tabular output. Most commands accepting
-the --table option and printing certain JSON keys as a table columns. For example:
+the --table option and printing certain JSON keys as a table columns. You can even
+reference compound keys by chaining keys in a nested dictionaries. For example:
 ```
 $ ./vacli public-ip-list
 [
@@ -350,9 +358,29 @@ id                                   address         name      v  vm
 The --table option may also be instructed to produce the table with specific keys only,
 instead of the default set, e.g.
 ```
-$ ./vacli public-ip-list --table id address tags
-id                                   address         tags
-12909981-7712-44aa-97a2-456bc92c1fb0 xxx.151.224.22  []
+ ./vacli public-ip-list --table id v address creator.loginId
+id                                   v  address         creator.loginId
+ae50ca4e-4c5e-4e34-941d-0ae39f0a56e7 V4 xxx.151.225.100 apiuser/894140b8-6084-4337-b294-e93f5429b868
+0b982510-c04c-42ef-90b2-a0cf7b6b2234 V4 xxx.151.225.0   apiuser/894140b8-6084-4337-b294-e93f5429b868
+```
+
+This --table option is supported for both cases, when fetched object has a know scheme in which case
+predefined headers already defined, as well as for low-level HTTP verbs, when scheme is generally 
+speaking is not known prior to making a call. Still you can define keys that will be used to format
+output table, e.g.
+
+```
+$ ./vacli get --href https://amsa1.cloud.verizon.com/api/compute/vm/ --table id name os status
+id                                   name        os                     status
+346dd11b-307b-4798-8a9f-b5512a53fb22 PerfKit2    UBUNTU_64              OFF
+54619f12-fcec-42ce-a48f-e2ed990f3441 Test Web 02 WINDOWS_SERVER_2008_64 ON
+...
+
+$ ./vacli list-vms --table
+id                                   status os                     name        description
+346dd11b-307b-4798-8a9f-b5512a53fb22 OFF    UBUNTU_64              PerfKit2    PerfKit Benchmarker 02
+54619f12-fcec-42ce-a48f-e2ed990f3441 ON     WINDOWS_SERVER_2008_64 Test Web 02 Web Server 02
+...
 ```
 
 #### Using Tags
@@ -459,7 +487,7 @@ idx action  protocol sourceIpv4Cidr sourcePorts destinationIpv4Cidr destinationP
  1   DISCARD ALL      0.0.0.0/0      0           xxx.151.224.200/32  0
 ```
 
-Obviously, the resource UUID comprehension is a convenience, not must. Therefore,
+Obviously, the resource UUID comprehension is a convenience, not a must. Therefore,
 when unsure feel free to use HREFs.
 
 In certain cases, however, it may be even more convenient to use native resource
@@ -637,4 +665,15 @@ or, more preferable way
 ```
 # API ping from CRON
 * * * * *	cd /tmp/vacli && /usr/bin/python vacli get-root >> vacli.log 2>&1
+```
+
+#### How do I find who has created certain objects?
+Most resources have a "creator" property having additional details for the creator user and organization.
+
+Here is an example for how you can fetch this information:
+```
+$ ./vacli get --href https://amsa1.cloud.verizon.com/api/compute/vdisk/?limit=2 --table id name size status creator.loginId creator.organization.name
+id                                   name      size status creator.loginId                              creator.organization.name
+b0ff50eb-9eb4-4164-a33b-f704b5f99460 Boot Disk 2048 ACTIVE apiuser/894140b8-6084-4337-b294-e93f5429b868 f43a0037-18c5-445f-bad0-abb34a06fa03
+131abfe3-c626-44ff-a320-fad617b0a001 DELME     10   ACTIVE apiuser/894140b8-6084-4337-b294-e93f5429b868 f43a0037-18c5-445f-bad0-abb34a06fa03
 ```
