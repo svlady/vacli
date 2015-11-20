@@ -35,9 +35,9 @@ LOG_LEVELS = {'critical': log.CRITICAL,
 CONFIG_FILE = '.vacli'
 # API endpoint used for discovery
 DEFAULT_ENDPOINT = 'https://api.cloud.verizon.com'
-# page size for fetching resource collections, the default value is 20
-# increasing this number may improve performance for huge collections (VMs and vDisks)
-PAGE_SIZE = 100
+# page size for fetching resource collections, the default value is 20, the maximum is 200
+# increasing this number may improve performance for huge collections (such as VMs and vDisks)
+PAGE_SIZE = 200
 
 
 class Command(object):
@@ -124,6 +124,8 @@ class HTTPCommand(Command):
                                help='space separated list of resource HREFs')
         self.args.add_argument('--headers', metavar='key:val', nargs='*',
                                help='(optional) list of key:val pairs added to the request headers')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
 
     def run(self, api, args):
         headers = {k: v for k, v in (kv.split(':', 1) for kv in args.headers if ':' in kv)} if args.headers else None
@@ -230,17 +232,13 @@ class JobCommand(Command):
 
             job['startTime'] = JobCommand.strtime(job['startTime'])
 
-        if 'target' in job:
-            job['targetHref'] = job['target']['href']
-            job['targetName'] = getattr(job['target'], 'name', '')
-
         return job
 
 
 class JobList(JobCommand):
     """Get a list of the last N jobs."""
     action = 'job-list'
-    cols = ['startTime', 'operation', 'targetHref', 'status']
+    cols = ['startTime', 'operation', 'target.href', 'status']
 
     def add_options(self):
         self.args.add_argument('--last', type=int, metavar='N', nargs='?', const=10, default=10,
@@ -248,18 +246,18 @@ class JobList(JobCommand):
         self.args.add_argument('--table', metavar='key', nargs='*', default=None,
                                help='format output as a human readable table with given keys')
 
-    # TODO: work around --last N limitation, with N > 200
     def run(self, api, args):
         href = api.get_href(group='jobHistory')
-        limit = args.last
-        href = '%s?limit=%d' % (href, limit)
-        jobs = api.get(href)
-        offset = int(jobs['total']) - limit
-        if offset > 0:
-            jobs = api.get('%s&offset=%d' % (href, offset))
+        jobs = api.get(href + '?limit=1')
+        total = int(jobs['total'])
+        last = args.last
+        offset = total - last if total > last else 0
+        log.info('CLI.%s: fetching last %d out of %d total records', self.action, total - offset, total)
+        href = '%s?limit=%d&offset=%d' % (href, PAGE_SIZE, offset)
+        jobs = api.get_array(href)
 
         # sorting jobs by startTime
-        sorted_jobs = sorted(jobs['items'], key=lambda k: k['startTime'])
+        sorted_jobs = sorted(jobs, key=lambda k: k['startTime'])
         return map(self.format_job, sorted_jobs)
 
 
@@ -1325,19 +1323,27 @@ class GeorgeCli:
             )
 
             result = args.func(api, args)
+            if result and len(result):
+                # args.table is the optional list with the output table columns, if this list is empty,
+                # looking for default list of columns inside the command-object itself
+                cols = args.table if 'table' in args else None
+                if cols == []:
+                    cmd = args.func.im_class
+                    if hasattr(cmd, 'cols'):
+                        cols = cmd.cols
 
-            # args.table is the optional list with the output table columns, if this list is empty,
-            # looking for default list of columns inside the command-object itself
-            cols = args.table if 'table' in args else None
-            if cols == []:
-                cmd = args.func.im_class
-                if hasattr(cmd, 'cols'):
-                    cols = cmd.cols
-
-            if cols:
-                api.print_table(result, cols)
-            elif result:
-                api.print_json(result)
+                if cols:
+                    # transforming a list of JSON objects having "items" collection
+                    # into a plain list by merging those those collections.
+                    if type(result) is list and 'items' in result[0]:
+                        records = []
+                        for record in result:
+                            records += record['items'] if 'items' in record else []
+                        api.print_table(records, cols)
+                    else:
+                        api.print_table(result, cols)
+                else:
+                    api.print_json(result)
 
         except (ArgumentException, APIException), ex:
             print ex
