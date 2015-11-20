@@ -7,6 +7,12 @@
 * fixed vm-edit command to allow tag management for running VMs
 + vm and vdisk resource tags can be cleaned, replaced or appended using + command modifier
 + added --dry-run option for vdisk-edit command
+* changed time string format for the job related commands to be Windows compatible
+* increased page size for resource collections up to 200 to improve performance
++ get and options commands now supporting --table switch for tabular output
++ tabular output columns now supporting deep references, e.g. key1.key2.key3...
++ job-list displaying job stats under info log facility
+* job-list can now handle more than last 200 jobs
 
 0.1.3
 + Added API cache to store immutable API call results locally and effectively halving the number of API calls
