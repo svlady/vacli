@@ -86,7 +86,7 @@ _vacli()
         #
         case "${cmd}" in
             get|delete|options)
-                args="--href --headers" ;;
+                args="--href --headers --table" ;;
             patch|post|put)
                 args="--href --headers --json-file --dry-run" ;;
             get-resource-groups)
