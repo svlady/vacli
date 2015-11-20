@@ -204,8 +204,16 @@ class RestClient(object):
 
     @staticmethod
     def print_table(data, keys, empty='#', header=True):
+        def key_lookup(sub_dict, keys, empty='#'):
+            for k in keys.split('.'):
+                sub_dict = sub_dict.get(k)
+                if not sub_dict:
+                    return empty
+            return sub_dict
+
         if data and keys:
-            rows = [[str(item.get(k, empty)) for k in keys] for item in data]  # extracting given keys from collection
+            # extracting given keys from collection
+            rows = [[str(key_lookup(item, k, empty)) for k in keys] for item in data]
             if header:
                 rows.insert(0, keys)    # inserting those keys as a header line
             cols = zip(*rows)           # reorganizing data by columns
