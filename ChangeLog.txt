@@ -1,3 +1,10 @@
+0.1.5
++ added get-tags command to list defined tags
++ added get-href command to construct fully qualified URL from the resource type, tag or id
+* fixed print_table() to support both lists and singular objects
+* now the --table option does not display headers by default, '+' argument explicitly enables headers
+* typo fixes, documentation and example updates
+
 0.1.4
 * socket.error exception handling changes
 * vm-create is connecting VM to a single vnet during the build
