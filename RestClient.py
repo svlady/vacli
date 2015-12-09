@@ -212,6 +212,10 @@ class RestClient(object):
             return sub_dict
 
         if data and keys:
+            # if data has only one record, transforming to the list anyway
+            if not type(data) is list:
+                data = [data]
+
             # extracting given keys from collection
             rows = [[str(key_lookup(item, k, empty)) for k in keys] for item in data]
             if header:
