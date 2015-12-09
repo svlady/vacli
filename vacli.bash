@@ -34,10 +34,10 @@ _vacli()
     #  in the following string. They needed to distinguish commands possibly
     #  starting or ending with the same sub-string
     #
-    commands=" get delete options patch post put get-root get-admin-root get-resource-groups job-list job-poll \
-        fw-acl-list fw-acl-add fw-acl-del public-ip-list public-ip-add public-ip-del list-vdisk-templates \
-        list-vm-templates list-vdisks list-vnets list-vms list-vnics vdisk-create vdisk-edit vnet-create \
-        vnet-edit vm-create vm-edit vm-add-vnic vm-add-vdisk vm-list-mounts vnic-edit update-iops vm-ctl "
+    commands=" get delete options patch post put get-href get-tags get-root get-admin-root get-resource-groups \
+        job-list job-poll fw-acl-list fw-acl-add fw-acl-del public-ip-list public-ip-add public-ip-del \
+        list-vdisk-templates list-vm-templates list-vdisks list-vnets list-vms list-vnics vdisk-create vdisk-edit \
+        vnet-create vnet-edit vm-create vm-edit vm-add-vnic vm-add-vdisk vm-list-mounts vnic-edit update-iops vm-ctl "
 
     #
     # Looking for known CLI commands in the command line, so that we will
@@ -65,13 +65,15 @@ _vacli()
                     return 0
                     ;;
                 --ip)
-                    args=$(./vacli public-ip-list --table address | sed 1d) ;;
+                    args=$(./vacli public-ip-list --table address) ;;
                 --proto)
                     args="TCP UDP ICMP ESP ALL" ;;
                 --action)
                     args="DISCARD REJECT ACCEPT" ;;
                 --cmd)
                     args="reboot reset shutdown power-on power-off" ;;
+                --type)
+                    args="vms vnets vdisks tags vdiskTemplates vmTemplates jobHistory ipAddresses networkBoundaries" ;;
                 *)
                     args="" ;;
             esac
@@ -89,6 +91,10 @@ _vacli()
                 args="--href --headers --table" ;;
             patch|post|put)
                 args="--href --headers --json-file --dry-run" ;;
+            get-href)
+                args="--id --tag --type" ;;
+            get-tags)
+                args="--table" ;;
             get-resource-groups)
                 args="--table" ;;
             job-list)
