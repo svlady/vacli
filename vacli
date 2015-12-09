@@ -186,6 +186,43 @@ class Put(UpdateCommand):
     action = 'put'
 
 
+class GetHref(Command):
+    """Returns a fully qualified URL (or HREF) for given tag, type (group) and ID."""
+    action = 'get-href'
+    cols = ['href']
+
+    def add_options(self):
+        self.args.add_argument('--id', metavar='UUID',
+                               help='resource UUID')
+        self.args.add_argument('--type', required=True,
+                               help='resource type')
+        self.args.add_argument('--tag',
+                               help='(optional) resource tag')
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        info = {}
+        self.copy_args(vars(args), info, ['id', 'tag', 'type'])
+        info['href'] = api.get_href(args.type, args.tag, args.id)
+        return info
+
+
+class GetTags(Command):
+    """Returns a list of resource tags defined in your cloudspace."""
+    action = 'get-tags'
+    cols = ['name', 'href']
+
+    def add_options(self):
+
+        self.args.add_argument('--table', metavar='key', nargs='*', default=None,
+                               help='format output as a human readable table with given keys')
+
+    def run(self, api, args):
+        href = api.get_href('tags')
+        return api.get_array(href)
+
+
 class GetRoot(Command):
     """Root is the main entry point for the API and represents the subscriber's cloud resources."""
     action = 'get-root'
@@ -1323,10 +1360,15 @@ class GeorgeCli:
             )
 
             result = args.func(api, args)
+            print_headers = False
             if result and len(result):
                 # args.table is the optional list with the output table columns, if this list is empty,
                 # looking for default list of columns inside the command-object itself
                 cols = args.table if 'table' in args else None
+                if cols and cols[0] == '+':
+                    print_headers = True
+                    cols = cols[1:]
+
                 if cols == []:
                     cmd = args.func.im_class
                     if hasattr(cmd, 'cols'):
@@ -1339,9 +1381,9 @@ class GeorgeCli:
                         records = []
                         for record in result:
                             records += record['items'] if 'items' in record else []
-                        api.print_table(records, cols)
+                        api.print_table(records, cols, header=print_headers)
                     else:
-                        api.print_table(result, cols)
+                        api.print_table(result, cols, header=print_headers)
                 else:
                     api.print_json(result)
 
