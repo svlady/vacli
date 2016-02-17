@@ -17,7 +17,7 @@ Generic wrapper around Verizon Cloud API.
 """
 
 __author__ = 'Slava Vladyshevsky <slava(a)verizon.com>'
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 import base64
 import hmac
