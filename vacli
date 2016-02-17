@@ -22,7 +22,7 @@ import sys
 import os
 
 __author__ = 'Slava Vladyshevsky <slava(a)verizon.com>'
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 # supported LOG levels mapped to logging module constants
 LOG_LEVELS = {'critical': log.CRITICAL,
@@ -284,17 +284,14 @@ class JobList(JobCommand):
                                help='format output as a human readable table with given keys')
 
     def run(self, api, args):
-        href = api.get_href(group='jobHistory')
-        jobs = api.get(href + '?limit=1')
-        total = int(jobs['total'])
         last = args.last
-        offset = total - last if total > last else 0
-        log.info('CLI.%s: fetching last %d out of %d total records', self.action, total - offset, total)
-        href = '%s?limit=%d&offset=%d' % (href, PAGE_SIZE, offset)
-        jobs = api.get_array(href)
+        limit = PAGE_SIZE if last > PAGE_SIZE else last
+        href = api.get_href(group='jobHistory')
+        log.info('CLI.%s: fetching last %d total records', self.action, limit)
+        jobs = api.get(href + '?limit=%d' % limit)
 
         # sorting jobs by startTime
-        sorted_jobs = sorted(jobs, key=lambda k: k['startTime'])
+        sorted_jobs = sorted(jobs['items'], key=lambda k: k['startTime'])
         return map(self.format_job, sorted_jobs)
 
 
