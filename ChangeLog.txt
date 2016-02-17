@@ -4,6 +4,7 @@
 * fixed print_table() to support both lists and singular objects
 * now the --table option does not display headers by default, '+' argument explicitly enables headers
 * typo fixes, documentation and example updates
+* fixed job-list function to accommodate API changes
 
 0.1.4
 * socket.error exception handling changes
